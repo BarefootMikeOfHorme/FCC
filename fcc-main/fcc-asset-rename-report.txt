@@ -1,0 +1,14 @@
+=== FCC Asset Rename & Reference Fix ===
+Run: 2026-08-26 03:48:32
+
+--- Stage 1: Rename assets ---
+Renamed: free-claude-code-wordmark-dark.svg -> fcc-wordmark-dark.svg
+Renamed: free-claude-code-wordmark-light.svg -> fcc-wordmark-light.svg
+
+--- Stage 2: Reference fixes ---
+Updated references in: \README.md
+
+--- Stage 3: Verification ---
+fcc-wordmark-dark.svg  [OK]
+fcc-wordmark-light.svg  [OK]
+[OK] No stale wordmark filename references found.

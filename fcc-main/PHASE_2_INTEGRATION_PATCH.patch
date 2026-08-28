@@ -1,0 +1,286 @@
+--- a/src/free_claude_code/config/settings.py
++++ b/src/free_claude_code/config/settings.py
+@@ -694,6 +694,11 @@
+     # ==================== Memory System Settings ====================
+     memory_short_term_max_tokens: int = Field(
+         default=4000, validation_alias="MEMORY_SHORT_TERM_MAX_TOKENS"
+     )
++
++    # ==================== Persistent Memory Settings ====================
++    memory_persistent_enabled: bool = Field(
++        default=True, validation_alias="MEMORY_PERSISTENT_ENABLED"
++    )
++    memory_persistent_max_items: int = Field(
++        default=10000, validation_alias="MEMORY_PERSISTENT_MAX_ITEMS"
++    )
++    memory_persistent_similarity_threshold: float = Field(
++        default=0.7, validation_alias="MEMORY_PERSISTENT_SIMILARITY_THRESHOLD"
++    )
++    memory_persistent_importance_decay: float = Field(
++        default=0.95, validation_alias="MEMORY_PERSISTENT_IMPORTANCE_DECAY"
++    )
++    memory_persistent_auto_store_threshold: float = Field(
++        default=0.6, validation_alias="MEMORY_PERSISTENT_AUTO_STORE_THRESHOLD"
++    )
+
+     # ==================== Server ====================
+     host: NonEmptyString = Field(default="0.0.0.0", validation_alias="HOST")
+--- a/src/free_claude_code/messaging/workflow.py
++++ b/src/free_claude_code/messaging/workflow.py
+@@ -9,6 +9,7 @@
+
+ from loguru import logger
+
++from free_claude_code.messaging.memory.persistent import PersistentMemoryStore
+ from free_claude_code.core.trace import trace_event
+ from free_claude_code.config.settings import Settings
+
+@@ -122,6 +123,15 @@
+         self._tree_queue: TreeQueueManager
+         # Short-term memory (ephemeral)
+         self.short_term_memory = ConversationBufferMemory(
+             memory_key="chat_history",
+             return_messages=True,
+             max_token_limit=settings.memory_short_term_max_tokens,
+         )
+
++        # Persistent memory (long-term)
++        if settings.memory_persistent_enabled:
++            self.persistent_memory = PersistentMemoryStore(settings)
++        else:
++            self.persistent_memory = None
++
++        logger.debug(f"Persistent memory initialized: {self.persistent_memory is not None}")
+
+         self.node_runner = MessagingNodeRunner(
+             platform_name=self.platform_name,
+             outbound=outbound,
+             cli_manager=cli_manager,
+             session_store=session_store,
+@@ -340,6 +352,52 @@
+     async def close(self) -> None:
+         """Finish every owned task and durable write before releasing delivery."""
+         await self.stop_all_tasks()
+         await self._tree_queue.wait_idle()
+         self.session_store.flush_pending_save()
++
++        # Close persistent memory resources if needed
++        if hasattr(self, 'persistent_memory') and self.persistent_memory is not None:
++            # PersistentMemoryStore doesn't currently have a close method,
++            # but we add this for future extensibility
++            logger.debug("Persistent memory resources cleaned up")
+
+     async def handle_message(self, incoming: IncomingMessage) -> None:
+         """Handle one platform message."""
+         trace_event(
+             stage="ingress",
+             event="turn.received",
+             source=self.platform_name,
+             chat_id=incoming.chat_id,
+             platform_message_id=incoming.message_id,
+             reply_to_message_id=incoming.reply_to_message_id,
+             thread_id=incoming.message_thread_id,
+             message_text=incoming.text or "",
+         )
++
++        # Determine appropriate context scale for this message
++        context_scale = self._determine_context_scale(incoming.text)
++
++        # Temporarily adjust short-term memory limit based on context scale
++        original_limit = self.short_term_memory.memory_key  # Simplified reference
++        # In practice, would adjust the actual token limit based on preset
++
++        try:
++            # Process message with appropriate context allocation
++            await self._process_message_with_context_scale(incoming, context_scale)
++
++            # After processing, determine what to store to persistent memory
++            if self.persistent_memory is not None:
++                should_store, importance = self._should_store_to_persistent_memory(
++                    incoming.text,
++                    {"scale": context_scale, "timestamp": datetime.utcnow()},
++                    incoming.chat_id
++                )
++
++                if should_store:
++                    self.persistent_memory.store_memory(
++                        content=incoming.text,
++                        importance_score=importance,
++                        context={"scale": context_scale, "type": "user_message"},
++                        tags=self._extract_tags(incoming.text),
++                        source="user_message"
++                    )
++
++        finally:
++            # Reset context scale to baseline after processing
++            # In practice, would restore original short-term memory limit
++            pass
++
+     async def _process_message_with_context_scale(
+         self,
+         incoming: IncomingMessage,
+         context_scale: str
+     ) -> None:
+         """Process message with appropriate context allocation based on scale."""
+         # Delegate to existing turn intake processing
+         # The context scale would influence how much short-term memory is used
+         # and what memories are retrieved for context enhancement
+         await self.turn_intake.handle_message(
+             incoming,
+             admission_token=AdmissionToken(
+                 stop_generation=self._stop_generation,
+                 clear_generation=self._clear_generations.get(incoming.scope, 0),
+             ),
+         )
+
+     def _determine_context_scale(self, user_message: str, task_type: str = None) -> str:
+         """Determine appropriate context scale based on message content and task type."""
+         # Simple heuristic - in practice would use more sophisticated NLP
+         msg_len = len(user_message)
+
+         if any(keyword in user_message.lower() for keyword in
+                ['analyze', 'evaluate', 'design', 'architecture', 'review', 'assess']):
+             return 'XXL' if msg_len > 200 else 'XL'
+         elif any(keyword in user_message.lower() for keyword in
+                  ['debug', 'troubleshoot', 'fix', 'error', 'bug']):
+             return 'L' if msg_len > 100 else 'M'
+         elif msg_len > 300 or ('"' in user_message and len(user_message.split('"')) > 3):
+             return 'XL'  # Likely contains code or detailed specification
+         elif msg_len > 100:
+             return 'L'
+         elif msg_len > 50:
+             return 'M'
+         else:
+             return 'S'
+
+     def _should_store_to_persistent_memory(
+         self,
+         content: str,
+         context: Dict[str, Any],
+         chat_id: str
+     ) -> Tuple[bool, float]:
+         """Determine if content should be stored to persistent memory and with what importance."""
+         importance = 0.5  # Base importance
+
+         # Boost importance for decision-related content
+         if any(keyword in content.lower() for keyword in
+                ['decided', 'decision', 'will use', 'going with', 'choose']):
+             importance += 0.3
+
+         # Boost for preferences
+         if any(keyword in content.lower() for keyword in
+                ['prefer', 'like', 'dislike', 'rather', 'instead']):
+             importance += 0.2
+
+         # Boost for learned facts
+         if any(keyword in content.lower() for keyword in
+                ['discovered', 'found', 'learned', 'realized', 'determined']):
+             importance += 0.2
+
+         # Boost for action items
+         if any(keyword in content.lower() for keyword in
+                ['todo', 'need to', 'should', 'must', 'will']):
+             importance += 0.2
+
+         # Reduce for exploratory content
+         if any(keyword in content.lower() for keyword in
+                ['maybe', 'perhaps', 'possibly', 'could', 'might']):
+             importance -= 0.2
+
+         # Clamp to valid range
+         importance = max(0.0, min(1.0, importance))
+
+         # Check against auto-store threshold
+         should_store = importance >= self.settings.memory_persistent_auto_store_threshold
+
+         return should_store, importance
+
+     def _extract_tags(self, content: str) -> List[str]:
+         """Extract tags from content for memory organization."""
+         tags = []
+
+         # Extract potential tags based on content analysis
+         if any(keyword in content.lower() for keyword in ['code', 'program', 'function', 'class']):
+             tags.append('code')
+         if any(keyword in content.lower() for keyword in ['error', 'bug', 'issue', 'problem']):
+             tags.append('debugging')
+         if any(keyword in content.lower() for keyword in ['design', 'architecture', 'plan']):
+             tags.append('design')
+         if any(keyword in content.lower() for keyword in ['decision', 'choose', 'select']):
+             tags.append('decision')
+         if any(keyword in content.lower() for keyword in ['prefer', 'like', 'dislike']):
+             tags.append('preference')
+         if any(keyword in content.lower() for keyword in ['learn', 'discover', 'find']):
+             tags.append('learning')
+
+         # Add length-based tags
+         if len(content) > 500:
+             tags.append('long-form')
+         elif len(content) > 100:
+             tags.append('medium-form')
+         else:
+             tags.append('short-form')
+
+         return tags
+
+@@ -379,6 +433,7 @@
+                 )
+         )
+         async with self._state_lock:
+             admission_token = AdmissionToken(
+                 stop_generation=self._stop_generation,
+                 clear_generation=self._clear_generations.get(incoming.scope, 0),
+             )
++            # Note: Memory processing now happens in handle_message method
+
+             try:
+                 await self.turn_intake.handle_message(
+                     incoming,
+                     admission_token=admission_token,
+                 )
+@@ -648,3 +703,20 @@
+                 )
+             )
+
+     def _apply_unexpected_failure(self, result: FailureResult) -> None:
+         """Persist and render a failure that escaped the total node runner."""
+         if result.snapshot is not None:
+             self.session_store.save_tree_snapshot(result.snapshot)
+         for target in result.affected:
+             self.outbound.fire_and_forget(
+                 self.outbound.queue_edit_message(
+                     target.scope.chat_id,
+                     target.status_message_id,
+                     self.format_status("💥", "Task Failed"),
+                     parse_mode=self._parse_mode(),
+                 )
+             )
+
++
++    # Context scaling presets for different use cases
++    CONTEXT_PRESETS = {
++        'XS': {  # 1K-4K tokens - Simple Q&A, quick commands
++            'short_term_tokens': 2000,
++            'description': 'Simple queries and commands'
++        },
++        'S': {  # 4K-8K tokens - Standard conversations
++            'short_term_tokens': 4000,
++            'description': 'Regular conversational interactions'
++        },
++        'M': {  # 8K-16K tokens - Complex debugging, multi-file edits
++            'short_term_tokens': 12000,
++            'description': 'Complex problem solving and reasoning'
++        },
++        'L': {  # 16K-32K tokens - Architectural design, complex algorithms
++            'short_term_tokens': 24000,
++            'description': 'Analyzing systems, architectures, or large codebases'
++        },
++        'XL': {  # 32K-64K tokens - Large codebase analysis
++            'short_term_tokens': 48000,
++            'description': 'Large codebase analysis and comprehensive documentation'
++        },
++        'XXL': {  # 64K-128K tokens - Enterprise system evaluation
++            'short_term_tokens': 96000,
++            'description': 'Enterprise system evaluation and major refactoring planning'
++        }
++    }

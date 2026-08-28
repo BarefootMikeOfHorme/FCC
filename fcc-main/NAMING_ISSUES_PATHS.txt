@@ -1,0 +1,32 @@
+# File and Directory Naming Issues - free-claude-code/claude/agents related
+# Found via recursive find command
+
+## Files/Directories containing "free-claude-code":
+./assets/free-claude-code-wordmark-dark.svg
+./assets/free-claude-code-wordmark-light.svg
+
+## Files/Directories containing "claude":
+./.claude
+./assets/free-claude-code-wordmark-dark.svg
+./assets/free-claude-code-wordmark-light.svg
+./smoke/lib/claude_cli_matrix.py
+./src/free_claude_code
+./src/free_claude_code/cli/claude_env.py
+./src/free_claude_code/cli/launchers/claude.py
+./src/free_claude_code/cli/managed/claude.py
+./tests/cli/test_claude_launcher.py
+./tests/cli/test_managed_claude.py
+
+## Files/Directories containing "agents":
+./src/free_claude_code/agents
+./src/free_claude_code/messaging/transcript/subagents.py
+./test_phase3_agents.py
+
+## Notes:
+- Many of these are legitimate (internal package names, test files, etc.)
+- The primary concern from user feedback is: CLAUDE.md and AGENTS.md in project root
+- Asset files (wordmarks) are likely legitimate branding
+- .claude directory might be user-specific configuration
+- Internal source paths like src/free_claude_code/ are correct package names
+- Test files referencing claude/agents are likely legitimate
+- The key files to review for renaming are: CLAUDE.md and AGENTS.md in project root

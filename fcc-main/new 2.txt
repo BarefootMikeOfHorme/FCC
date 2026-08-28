@@ -1,0 +1,106 @@
+FREE CLAUDE CODE TERMINAL — MODERN IMPROVEMENTS + FILE EXPLORER NODE SPEC
+
+1. TERMINAL IMPROVEMENTS
+   - Clickable Links:
+     • File paths, URLs, agent IDs, sandbox IDs.
+     • Left-click = open/view; Right-click = context menu.
+   - Dropdown/Collapsible Error Reports:
+     • Expand/collapse error details.
+     • Scrollable lists for multiple errors/threats.
+   - IntelliSense-Style Suggestions:
+     • Autocomplete for commands, agent names, file paths, memory tags.
+     • Smart error correction (“Did you mean…”).
+   - Hover Tooltips:
+     • Show metadata (hash, size, modified date, error count).
+   - Rich Output Blocks:
+     • JSONC (machine-friendly) + Markdown (human-friendly).
+     • Collapsible sections for logs, memory summaries, agent status.
+   - Real-Time Graphs:
+     • ASCII/Unicode CPU, memory, message throughput charts.
+   - Multi-Tab Panels:
+     • Tabs for Main Agent, Project Agents, Assistant Agents, Security Node.
+   - Command Palette (Ctrl+Shift+P):
+     • Quick access to all actions (start agent, repair memory, open logs).
+   - Themes + Retro Modes:
+     • Dracula, Nord, Solarized, CRT amber/green, Matrix rain.
+   - Live Notifications:
+     • Toast popups for agent events (spawn, kill, error, quarantine).
+   - Replay Mode:
+     • Scrollback playback for logs and agent messages.
+   - Repair/Validation Commands:
+     • `repair memory-index`, `validate agents`, `repair routing-rules`.
+   - Agent Hierarchy Visualization:
+     • ASCII tree showing Main → Project → Assistant structure.
+   - Sandbox Viewer:
+     • List sandboxes, status, kill-switch events, Tor agent activity.
+
+2. FILE EXPLORER NODE
+   - General:
+     • Collapsible side panel (Ctrl+E toggle).
+     • Detachable window option.
+     • Directory tree + search bar + agent context bindings.
+   - Click Actions:
+     • Single-click: highlight file/folder, notify AI of current context.
+     • Double-click: auto `cd` into directory/project folder, sync agent working directory.
+     • Right-click: context menu with file-type-specific options.
+   - Context Menu Options:
+     • Regular Files:
+       - Open in Editor
+       - Open in Safe IDE (sandboxed read-only)
+       - Browse Containing Folder
+       - Send to Agent for Diagnosis
+       - Run Linter / Static Scan
+       - Show File Metadata
+     • Directories:
+       - Set as Agent Working Directory
+       - Run Project Scan (Assistant Agent harvest)
+       - Quarantine Directory
+       - Sync with Project Agent
+     • Compile Error Files:
+       - Debug (sandboxed runner)
+       - Parse Error
+       - Scrollable Error List (links to file:line)
+       - Send All Errors to Agent
+       - Create Issue Tracker Entry
+     • Threat-Flagged Files:
+       - Quarantine Artifact
+       - Flag for Human Review
+       - Run Security Scan (SSD + DSD)
+       - Dry Run in Quarantined Sandbox
+       - Extract IOCs
+       - Send to Attribution Daemon
+     • Agent/Sandbox IDs:
+       - View Logs
+       - Restart Agent
+       - Kill Sandbox (Yosemite Sam)
+       - Export Summary (JSONC + MD)
+   - Visual Indicators:
+     • Normal file: default color.
+     • Compile error: red badge ❌.
+     • Warning: yellow badge ⚠️.
+     • Threat-flagged: purple badge 🛡️.
+     • Secure/sandboxed: lock symbol 🔒.
+   - Multi-Error/Threat Handling:
+     • Scrollable dropdown list for multiple errors/threats.
+     • Bulk actions: Debug All, Quarantine All, Send All to Agent.
+   - AI Integration:
+     • Single-click highlights notify AI agents of context.
+     • Double-click auto-cd updates agent working directory.
+     • Right-click actions route through AID, SSD, DSD, PED.
+     • All actions produce SHA256-anchored metadata stored in TID.
+     • Claude Security Mode receives JSONC + MD summaries for explanation.
+   - Security Rules:
+     • No raw artifact content exposed in terminal.
+     • Threat actions require sandbox isolation.
+     • High-risk actions require confirmation + audit logging.
+     • Yosemite Sam daemon monitors sandbox behavior and can override.
+   - Output Formats:
+     • JSONC: file path, sha256, error/threat metadata, available actions.
+     • Markdown: readable summaries, badges, action links.
+   - UX Enhancements:
+     • Drag-and-drop files into terminal auto-generates command.
+     • Command palette mirrors right-click options.
+     • Collapsible panel can shrink to icon-only mode.
+     • Integrated search bar supports fuzzy search and tag filtering.
+
+END OF SPEC

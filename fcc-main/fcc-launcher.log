@@ -1,0 +1,33 @@
+[2026-08-24 04:56:21] === Free Claude Code launcher starting (dir=fcc-main, port=8082) ===
+[2026-08-24 04:56:21] Checking uv...
+[2026-08-24 04:56:21] uv version: 0.9.18
+[2026-08-24 04:56:21] WARNING: uv self-update failed (non-fatal): uv self update exited with code 2
+[2026-08-24 04:56:21] uv version after update check: 0.9.18
+[2026-08-24 04:56:21] This folder isn't a git checkout yet - converting it into one so future updates work...
+[2026-08-24 04:56:29] Syncing Python environment with uv...
+[2026-08-24 04:56:29] uv sync failed (uv sync exited with code 2) - repairing: clearing cache and retrying with --reinstall...
+[2026-08-24 04:57:51] === Free Claude Code launcher starting (dir=fcc-main, port=8082) ===
+[2026-08-24 04:57:51] Ensuring uv is the standalone build and up to date (pip/brew-installed uv can't self-update and can be stuck below this repo's required version)...
+[2026-08-24 04:57:51] Pre-existing uv version: 0.9.18
+[2026-08-24 04:58:04] === Free Claude Code launcher starting (dir=fcc-main, port=8082) ===
+[2026-08-24 04:58:04] Ensuring uv is the standalone build and up to date (pip/brew-installed uv can't self-update and can be stuck below this repo's required version)...
+[2026-08-24 04:58:04] Pre-existing uv version: 0.9.18
+[2026-08-24 05:03:17] === Free Claude Code launcher starting (dir=fcc-main, port=8082) ===
+[2026-08-24 05:03:17] Ensuring uv is the standalone build and up to date (pip/brew-installed uv can't self-update and can be stuck below this repo's required version)...
+[2026-08-24 05:03:17] Pre-existing uv version: 0.9.18
+[2026-08-24 05:03:17] Downloaded uv installer to C:\Users\ADMINI~1\AppData\Local\Temp\uv-install.ps1 - running it in an isolated process...
+[2026-08-24 05:03:17] uv installer child process exited with code 1
+[2026-08-24 05:03:17] Installer stdout: The 'Get-ExecutionPolicy' command was found in the module 'Microsoft.PowerShell.Security', but the module could not be loaded. For more information, run 'Import-Module Microsoft.PowerShell.Security'.
+
+[2026-08-24 05:05:12] === Free Claude Code launcher starting (dir=fcc-main, port=8082) ===
+[2026-08-24 05:05:12] Ensuring uv is the standalone build and up to date (pip/brew-installed uv can't self-update and can be stuck below this repo's required version)...
+[2026-08-24 05:05:12] Pre-existing uv version: 0.9.18
+[2026-08-24 05:05:12] Downloaded uv installer to C:\Users\ADMINI~1\AppData\Local\Temp\uv-install.ps1 - running it in an isolated process via pwsh.exe...
+[2026-08-24 05:05:15] uv installer child process exited with code 1
+[2026-08-24 05:05:15] Installer stdout: downloading uv 0.12.5 (x86_64-pc-windows-msvc)
+failed to download from https://releases.astral.sh/github/uv/releases/download/0.12.5
+trying alternative download URL
+failed to download from https://github.com/astral-sh/uv/releases/download/0.12.5
+failed to download binaries
+
+

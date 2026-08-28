@@ -1,0 +1,24 @@
+=== FCC Fix Double-Prefix & Re-Verify ===
+Run: 2026-08-26 03:31:06
+Root: fcc-main
+
+--- Stage A: Fix double-prefix ---
+Fixed double-prefix in: \fcc-agents.md
+Fixed double-prefix in: \fcc-claude.md
+
+--- Stage B: Verification (case-sensitive) ---
+  [STALE] \GAME_PLAN.md:23  - Actual problematic naming that should be changed (documentation files like CLAUDE.md, AGENTS.md)
+  [STALE] \GAME_PLAN.md:32  - `CLAUDE.md`
+  [STALE] \GAME_PLAN.md:33  - `AGENTS.md`
+  [STALE] \GAME_PLAN.md:40  1. **Rename CLAUDE.md → fcc-claude.md**
+  [STALE] \GAME_PLAN.md:41  2. **Rename AGENTS.md → fcc-agents.md**
+  [STALE] \GAME_PLAN.md:53  - Version bump to 6.0.0+ (per CLAUDE.md versioning rules)
+  [STALE] \GAME_PLAN.md:61  1. Rename: CLAUDE.md → fcc-claude.md
+  [STALE] \GAME_PLAN.md:62  2. Rename: AGENTS.md → fcc-agents.md
+  [STALE] \GAME_PLAN.md:63  3. Update: fcc-claude.md (formerly CLAUDE.md) - update "Keep ... identical" directive
+  [STALE] \GAME_PLAN.md:64  4. Update: fcc-agents.md (formerly AGENTS.md) - update "Keep ... identical" directive
+
+Root doc files present:
+  [OK] fcc-agents.md clean
+  [OK] fcc-claude.md clean
+

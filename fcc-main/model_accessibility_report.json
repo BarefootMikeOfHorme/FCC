@@ -1,0 +1,39 @@
+{
+  "providers": [
+    {
+      "provider_id": "lmstudio",
+      "base_url": "http://localhost:1234/v1",
+      "accessible": true,
+      "models": [
+        "qwen/qwen3-coder-30b",
+        "openai/gpt-oss-20b",
+        "text-embedding-nomic-embed-text-v1.5"
+      ],
+      "notes": "LM Studio is running and accessible. Requires no API key."
+    },
+    {
+      "provider_id": "llamacpp",
+      "base_url": "http://localhost:8080/v1",
+      "accessible": false,
+      "models": [],
+      "notes": "Llama.cpp server is not running or not accessible at the default URL."
+    },
+    {
+      "provider_id": "ollama",
+      "base_url": "http://localhost:11434",
+      "accessible": true,
+      "models": [],
+      "notes": "Ollama server is running but no models are installed. Use 'ollama pull <model>' to install models."
+    }
+  ],
+  "summary": {
+    "total_providers_tested": 3,
+    "accessible_providers": 2,
+    "providers_with_models": 1,
+    "recommendations": [
+      "Start Llama.cpp server with 'llama-server' to make it accessible.",
+      "Install models in Ollama using 'ollama pull <model>' to make them available.",
+      "For remote providers (NVIDIA NIM, OpenRouter, etc.), obtain API keys and configure them in the .env file or Admin UI."
+    ]
+  }
+}

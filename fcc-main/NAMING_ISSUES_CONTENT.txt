@@ -1,0 +1,87 @@
+# Content Naming Issues - free-claude-code/claude/agents related
+# Found via recursive grep of documentation and key files
+
+## Primary Issue - Documentation Files Causing Confusion
+# These files in the project root could be mistaken for actual Claude Code documentation:
+./CLAUDE.md
+./AGENTS.md
+
+## Content Analysis of Problematic Files:
+
+### In CLAUDE.md and AGENTS.md (identical files):
+- Line 3: "> Keep AGENTS.md and CLAUDE.md identical."
+  - This directive refers to the confusingly named files themselves
+- Lines 35, 69-70: References to source code paths like `src/free_claude_code/core/anthropic/`
+  - These are CORRECT and should remain as they refer to actual internal structure
+- Line 78: "- Docs and assets: `README.md`, `assets/`, `AGENTS.md`, `CLAUDE.md`"
+  - This lists the confusingly named files as documentation assets
+
+## Other Documentation Files with References:
+
+### ARCHITECTURE.md:
+- Line 2012: "changes still follow the versioning rules in [AGENTS.md](AGENTS.md) and"
+- Line 2013: "[CLAUDE.md](CLAUDE.md)"
+- Line 2015: "the shared Anthropic protocol logic in `src/free_claude_code/core/anthropic/`"
+- These references are to the confusingly named files and should be updated if files are renamed
+
+### README.md:
+- Multiple references to "free-claude-code" in badges, URLs, and documentation
+  - Examples:
+    - Badge: ![Testing: Pytest](https://img.shields.io/badge/Testing-Pytest-00c0ff.svg?style=for-the-badge)](https://github.com/Alishahryar1/free-claude-code/actions/workflows/tests.yml)
+    - Install commands: curl -fsSL "https://raw.githubusercontent.com/Alishahryar1/free-claude-code/main/scripts/install.sh"
+    - These are CORRECT as they refer to the actual GitHub repository and project name
+
+### CONTRIBUTING.md:
+- References to cloning and working with the free-claude-code repository
+  - These are CORRECT for contributor documentation
+
+### DEPLOYMENT_OPERATIONS_GUIDE.md:
+- Multiple references to "free-claude-code" in deployment contexts (docker, systemd, etc.)
+  - These are CORRECT for deployment documentation
+
+## Internal Source Code References (CORRECT - should remain):
+
+### In src/free_claude_code/:
+- Package name: "free-claude-code" (correct)
+- Import paths: src/free_claude_code/... (correct)
+- Model ownership: "owned_by": "free-claude-code" (correct)
+- User agent strings: "free-claude-code/{version}" (correct)
+- These are all legitimate internal references to the package
+
+### Console Entrypoints and Launchers:
+- fcc-server, fcc-claude, fcc-setup, etc. (correctly use fcc- prefix)
+- Internal implementation references to free_claude_code package (correct)
+- These appropriately distinguish user-facing commands (fcc-*) from internal package (free_claude_code)
+
+## Test Files References (CONTEXT DEPENDENT):
+- Some test files reference "free-claude-code" in expected outputs (e.g., version commands)
+- These are CORRECT as they test the actual behavior
+- Test file names like test_claude_launcher.py are appropriate as they test the Claude launcher
+
+## Summary of Actionable Items:
+
+### HIGH PRIORITY (User-specific concern):
+1. Rename CLAUDE.md → fcc-claude.md
+2. Rename AGENTS.md → fcc-agents.md
+3. Update internal references to these files:
+   - In CLAUDE.md/AGENTS.md: Update "Keep ... identical" directive
+   - In ARCHITECTURE.md: Update [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) links
+   - In any other files that reference these documentation files
+
+### MEDIUM PRIORITY (Consistency improvement):
+- Consider reviewing other documentation for consistent "fcc-" branding where appropriate
+- Ensure user-facing documentation clearly distinguishes Free Claude Code from actual Claude Code
+
+### LOW PRIORITY (Internal consistency - likely NOT recommended):
+- Renaming src/free_claude_code/ to src/fcc/ would be a MAJOR breaking change requiring:
+  - Version bump to 6.0.0+
+  - Updates to ~1000+ import statements
+  - pyproject.toml modifications
+  - Significant disruption for users
+  - Not recommended unless major version is planned
+
+## Verification Needed:
+After any renaming, verify:
+1. All internal links and references work correctly
+2. Documentation builds/displays properly
+3. No broken references in code or documentation

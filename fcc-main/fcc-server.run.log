@@ -1,0 +1,9 @@
+INFO:     127.0.0.1:52858 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64658 - "GET /admin HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64658 - "GET /admin/assets/admin.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /admin/assets/admin.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /admin/api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /admin/api/providers/openai/auth HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /admin/api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "POST /admin/api/config/validate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /admin/api/providers/local-status HTTP/1.1" 200 OK
