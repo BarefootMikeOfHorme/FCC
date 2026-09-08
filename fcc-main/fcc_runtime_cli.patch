@@ -1,0 +1,1125 @@
+diff --git fcc-main/src/free_claude_code/cli/entrypoints.py fcc-main/src/free_claude_code/cli/entrypoints.py
+new file mode 100644
+index 0000000..e017ef0
+--- /dev/null
++++ fcc-main/src/free_claude_code/cli/entrypoints.py
+@@ -0,0 +1,97 @@
++# ============================================================
++# FCC Server Entrypoint — Corrected & Enhanced
++# ============================================================
++
++import asyncio
++import threading
++import uvicorn
++
++# Core FCC imports
++from free_claude_code.config.settings import Settings
++from free_claude_code.runtime.bootstrap import build_asgi_app
++
++# Monitoring + Orchestrator imports (corrected)
++from free_claude_code.core.monitoring.terminal_monitors import start_monitoring
++from free_claude_code.cli.monitoring_orchestrator import start_monitoring_orchestrator
++
++# Admin UI + Warm Runtime helpers
++from free_claude_code.cli.entrypoints_helpers import (
++    _open_admin_ui,
++    _warm_runtime,
++)
++
++
++def serve():
++    """
++    Start FCC server using new ASGI architecture.
++    Enhanced for expanded logging, monitoring protocols,
++    multi-instance orchestration, and provider warmup.
++    """
++
++    # ---------------------------------------------------------
++    # 1. Early logging initialization (Patch 2 + expanded)
++    # ---------------------------------------------------------
++    from free_claude_code.config.logging_config import ensure_logging_initialized_early
++    ensure_logging_initialized_early()
++    print("[FCC] Logging initialized (expanded protocols ready).")
++
++    # ---------------------------------------------------------
++    # 2. Settings + ASGI app
++    # ---------------------------------------------------------
++    settings = Settings()
++    asgi_app = build_asgi_app(settings)
++
++    print("[FCC] Starting server...")
++
++    # ---------------------------------------------------------
++    # 3. Provider warmup (Patch 3)
++    # ---------------------------------------------------------
++    asyncio.run(_warm_runtime(settings))
++
++    # ---------------------------------------------------------
++    # 4. Expanded monitoring protocol initialization
++    # ---------------------------------------------------------
++    # Enhanced terminal monitoring cluster
++    threading.Thread(target=start_monitoring, daemon=True).start()
++
++    # New monitoring orchestrator
++    if start_monitoring_orchestrator:
++        threading.Thread(target=start_monitoring_orchestrator, daemon=True).start()
++    else:
++        print("[FCC] Monitoring orchestrator not available; skipping.")
++
++    # ---------------------------------------------------------
++    # 5. Agent orchestration hooks (for your multi-instance vision)
++    # ---------------------------------------------------------
++    try:
++        from free_claude_code.runtime.agent_orchestrator import initialize_agent_system
++        initialize_agent_system(settings)
++        print("[FCC] Agent orchestration initialized.")
++    except Exception:
++        print("[FCC] Agent orchestration not available; skipping.")
++
++    # ---------------------------------------------------------
++    # 6. Multi-instance registry (future expansion)
++    # ---------------------------------------------------------
++    try:
++        from free_claude_code.runtime.instance_registry import initialize_instance_registry
++        initialize_instance_registry(settings)
++        print("[FCC] Instance registry initialized.")
++    except Exception:
++        print("[FCC] Instance registry not available; skipping.")
++
++    # ---------------------------------------------------------
++    # 7. Admin UI auto-open
++    # ---------------------------------------------------------
++    threading.Thread(target=_open_admin_ui, daemon=True).start()
++
++    # ---------------------------------------------------------
++    # 8. Start uvicorn ASGI server
++    # ---------------------------------------------------------
++    uvicorn.run(
++        asgi_app.app,
++        host=settings.host,
++        port=settings.port,
++        log_level=settings.log_level.lower(),
++        reload=False,
++    )
+diff --git fcc-main/src/free_claude_code/cli/launchers/claude.py fcc-main/src/free_claude_code/cli/launchers/claude.py
+new file mode 100644
+index 0000000..4ae4681
+--- /dev/null
++++ fcc-main/src/free_claude_code/cli/launchers/claude.py
+@@ -0,0 +1,137 @@
++from __future__ import annotations
++
++# ============================================================
++# FCC Patch 2 — Early Logging Initialization for Claude Launcher
++# ============================================================
++
++from free_claude_code.config.logging_config import ensure_logging_initialized_early
++ensure_logging_initialized_early()
++
++from typing import Any
++from loguru import logger
++from free_claude_code.config.settings import Settings
++from free_claude_code.runtime.bootstrap import build_asgi_app
++from free_claude_code.runtime.provider_manager import ProviderRuntimeManager
++import asyncio
++import subprocess
++import shutil
++import sys
++
++
++# ------------------------------------------------------------
++# Windows Terminal + WSL selection logic
++# ------------------------------------------------------------
++
++WSL_DISTROS = {
++    "1": "Ubuntu",        # Default + stable
++    "2": "kali-linux",    # For 600-OSINT model
++    "3": "Athena",        # Hardened environment
++}
++
++def _wt_available() -> bool:
++    """Check if Windows Terminal is available."""
++    return shutil.which("wt.exe") is not None
++
++
++def _spawn_wsl_tab(distro: str):
++    """
++    Spawn Claude inside a dedicated WSL tab.
++    Claude MUST NOT attach to FCC-server's tab cluster.
++    """
++    if not _wt_available():
++        print("[FCC] Windows Terminal not available — running Claude in current shell.")
++        return False
++
++    try:
++        subprocess.Popen([
++            "wt.exe",
++            "--window", "0",
++            "--title", f"Claude ({distro})",
++            "--command", f"wsl.exe -d {distro} fcc-claude"
++        ])
++        print(f"[FCC] Claude WSL tab launched ({distro})")
++        return True
++    except Exception as exc:
++        print(f"[FCC] Claude WSL tab failed safely: {exc}")
++        return False
++
++
++# ------------------------------------------------------------
++# Original FCC Claude runtime warmup (preserved)
++# ------------------------------------------------------------
++
++def _resolve_setting(obj: Any, name: str, default: Any) -> Any:
++    """Return attribute `name` from obj if present, otherwise default."""
++    return getattr(obj, name, default)
++
++
++async def _warm_runtime(settings: Settings) -> None:
++    """
++    Patch 3: initialize ProviderRuntimeManager and warm model cache.
++    Claude does NOT start a server; warmup is optional but helpful.
++    """
++    manager = ProviderRuntimeManager(settings)
++    logger.info("Claude runtime: ProviderRuntimeManager initialized (generation_id=%s)", manager.current_generation_id)
++
++    try:
++        result = await manager.warm_referenced_model_cache()
++        logger.info(
++            "Claude runtime: provider model cache warmed: refreshed_providers=%s errors=%s",
++            result.refreshed_provider_ids,
++            result.errors,
++        )
++    except Exception as exc:
++        logger.warning(
++            "Claude runtime warmup failed: exc_type=%s",
++            type(exc).__name__,
++        )
++
++
++# ------------------------------------------------------------
++# Enhanced Claude launcher
++# ------------------------------------------------------------
++
++def launch() -> None:
++    print("[FCC] Launching Claude client runtime...")
++    logger.debug("Claude launcher: constructing Settings and building ASGI client app.")
++
++    # --------------------------------------------------------
++    # WSL distro selection menu (Debian removed)
++    # --------------------------------------------------------
++    print("\n[FCC] Select Linux environment for Claude:")
++    print("  1) Ubuntu (default, stable)")
++    print("  2) Kali (600-OSINT model)")
++    print("  3) Athena (hardened)")
++
++    choice = input("[FCC] Choose distro (1-3): ").strip()
++    distro = WSL_DISTROS.get(choice, "Ubuntu")
++
++    print(f"[FCC] Selected Linux environment: {distro}")
++
++    # --------------------------------------------------------
++    # Spawn Claude in WSL tab (preferred)
++    # --------------------------------------------------------
++    if _spawn_wsl_tab(distro):
++        print("[FCC] Claude launched in WSL tab. This shell will exit.")
++        return
++
++    # --------------------------------------------------------
++    # Fallback: run Claude in current shell
++    # --------------------------------------------------------
++    settings = Settings()
++
++    # Claude builds the ASGI client app but DOES NOT start uvicorn.
++    app = build_asgi_app(settings)
++
++    # Optional: warm provider runtime for Claude-side tools
++    asyncio.run(_warm_runtime(settings))
++
++    logger.info("Claude client runtime initialized. Connect to FCC-server at %s:%s",
++                settings.host, settings.port)
++
++    print("[FCC] Claude runtime ready. Use fcc-server to start the main server.")
++    print("[FCC] Claude client connected to FCC-server for inference, agents, and providers.")
++
++
++if __name__ == "__main__":
++    launch()
+diff --git fcc-main/src/free_claude_code/cli/monitoring.py fcc-main/src/free_claude_code/cli/monitoring.py
+new file mode 100644
+index 0000000..9a04687
+--- /dev/null
++++ fcc-main/src/free_claude_code/cli/monitoring.py
+@@ -0,0 +1,118 @@
++"""
++Enhanced monitoring launcher for FCC.
++Safe-to-fail external monitors + internal dashboard hook.
++Now supports Windows Terminal tab spawning for FCC-server monitoring cluster.
++"""
++
++import subprocess
++import shutil
++import sys
++import os
++
++# Optional internal dashboard
++try:
++    from free_claude_code.core.monitoring_dashboard import start_monitoring_dashboard
++except Exception:
++    start_monitoring_dashboard = None
++
++
++# ------------------------------------------------------------
++# Windows Terminal detection
++# ------------------------------------------------------------
++
++def _wt_available() -> bool:
++    """Check if Windows Terminal (wt.exe) is available."""
++    return shutil.which("wt.exe") is not None
++
++
++def _spawn_wt_tab(title: str, command: str):
++    """
++    Spawn a new Windows Terminal tab attached to the same window.
++    Safe-to-fail: falls back to subprocess.Popen if wt.exe is missing.
++    """
++    if _wt_available():
++        try:
++            subprocess.Popen([
++                "wt.exe",
++                "--window", "0",
++                "--title", title,
++                "--command", command
++            ])
++            print(f"[FCC] WT tab launched: {title}")
++            return
++        except Exception as e:
++            print(f"[FCC] WT tab failed safely ({title}): {e}")
++
++    # Fallback: normal subprocess
++    try:
++        subprocess.Popen(command.split())
++        print(f"[FCC] Fallback launch: {title}")
++    except Exception as e:
++        print(f"[FCC] Fallback failed safely ({title}): {e}")
++
++
++# ------------------------------------------------------------
++# Original safe launcher (preserved exactly)
++# ------------------------------------------------------------
++
++def _try_launch(cmd, name):
++    """Launch a monitor safely without crashing FCC."""
++    try:
++        if shutil.which(cmd[0]):
++            print(f"[FCC] Launching {name}...")
++            subprocess.Popen(cmd)
++        else:
++            print(f"[FCC] {name} not installed — skipping.")
++    except Exception as e:
++        print(f"[FCC] {name} failed safely: {e}")
++
++
++# ------------------------------------------------------------
++# Enhanced cluster launcher
++# ------------------------------------------------------------
++
++def launch_monitoring():
++    """
++    Launch monitoring dashboards (safe-to-fail combo).
++    Enhanced to spawn monitors in Windows Terminal tabs when available.
++    """
++
++    print("[FCC] Launching monitoring dashboards...")
++
++    # --------------------------------------------------------
++    # FCC-server monitoring cluster (Windows Terminal tabs)
++    # --------------------------------------------------------
++
++    # Tab 2 → btop
++    _spawn_wt_tab("btop", "btop")
++
++    # Tab 3 → glances
++    _spawn_wt_tab("glances", "glances")
++
++    # Tab 4 → bottom
++    _spawn_wt_tab("bottom", "bottom")
++
++    # Tab 5 → BoHTOM placeholder (future custom bottom)
++    # This will be replaced later when BoHTOM is implemented.
++    _spawn_wt_tab("BoHTOM (placeholder)", "bottom")
++
++    # --------------------------------------------------------
++    # Legacy fallback monitors (preserved)
++    # --------------------------------------------------------
++
++    _try_launch(["htop"], "htop")
++    _try_launch(["nmon"], "nmon")
++    _try_launch(["nom"], "nom")
++
++    # --------------------------------------------------------
++    # Internal FCC dashboard (preserved)
++    # --------------------------------------------------------
++
++    if start_monitoring_dashboard:
++        try:
++            print("[FCC] Starting internal monitoring dashboard...")
++            subprocess.Popen(["python", "-m", "free_claude_code.core.monitoring_dashboard"])
++        except Exception as e:
++            print(f"[FCC] Internal dashboard failed safely: {e}")
++    else:
++        print("[FCC] Internal dashboard not available — skipping.")
+diff --git fcc-main/src/free_claude_code/cli/monitoring_orchestrator.py fcc-main/src/free_claude_code/cli/monitoring_orchestrator.py
+new file mode 100644
+index 0000000..ae0f4d8
+--- /dev/null
++++ fcc-main/src/free_claude_code/cli/monitoring_orchestrator.py
+@@ -0,0 +1,306 @@
++"""
++FCC Monitoring Orchestrator
++
++Responsibilities:
++- React to runtime lifecycle hooks (runtime_initialized, provider_manager_ready, asgi_ready, bootstrap_complete).
++- Maintain a lightweight monitoring state (monitors, metrics, dependency status).
++- Integrate with core monitoring modules (dependency_resolver, system metrics, terminal monitors) without
++  breaking FCC bootstrap.
++- Provide snapshot access for Admin / Diagnostics UI.
++
++This module is intentionally conservative:
++- No long-running loops started automatically.
++- No external commands executed automatically.
++- All failures are safe-to-fail and logged via print/loguru.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, asdict
++from typing import Dict, Optional, List, Any
++import threading
++import time
++
++from loguru import logger
++
++# Core monitoring imports (safe-to-fail)
++try:
++    from free_claude_code.core.monitoring.dependency_resolver import (
++        resolve_dependencies,
++        write_resolution_log,
++        explain_dependency,
++        explain_env_issue,
++        explain_task,
++    )
++except Exception as exc:
++    logger.warning(
++        "Monitoring orchestrator: dependency_resolver import failed: {}",
++        exc,
++    )
++    resolve_dependencies = None
++    write_resolution_log = None
++    explain_dependency = None
++    explain_env_issue = None
++    explain_task = None
++
++
++# ---------------------------------------------------------------------------
++# Types and simple structures
++# ---------------------------------------------------------------------------
++
++@dataclass
++class MonitorProcess:
++    name: str
++    kind: str  # "terminal", "web", "service"
++    status: str  # "inactive", "starting", "running", "failed"
++    last_error: Optional[str] = None
++
++
++@dataclass
++class OrchestratorSnapshot:
++    runtime_ready: bool
++    provider_manager_ready: bool
++    asgi_ready: bool
++    bootstrap_complete: bool
++    monitors: Dict[str, Dict[str, Any]]
++    dependency_plan: Optional[Dict[str, Any]]
++
++
++# ---------------------------------------------------------------------------
++# Monitoring Orchestrator core
++# ---------------------------------------------------------------------------
++
++class MonitoringOrchestrator:
++    """
++    Central coordinator for FCC monitoring.
++
++    This is intentionally minimal:
++    - Tracks lifecycle readiness flags.
++    - Tracks monitor processes (logical, not actual PIDs).
++    - Optionally resolves dependencies and writes a log.
++    - Provides snapshots for Admin / Diagnostics UI.
++    """
++
++    def __init__(self) -> None:
++        self._lock = threading.RLock()
++
++        # Lifecycle flags
++        self.runtime_ready: bool = False
++        self.provider_manager_ready_flag: bool = False
++        self.asgi_ready_flag: bool = False
++        self.bootstrap_complete_flag: bool = False
++
++        # Logical monitor registry (you can expand this later)
++        self.monitors: Dict[str, MonitorProcess] = {
++            "btop": MonitorProcess(name="btop", kind="terminal", status="inactive"),
++            "bottom": MonitorProcess(name="bottom", kind="terminal", status="inactive"),
++            "glances": MonitorProcess(name="glances", kind="terminal", status="inactive"),
++            "grafana": MonitorProcess(name="grafana", kind="web", status="inactive"),
++        }
++
++        # Dependency resolution plan (optional)
++        self._dependency_plan: Optional[Any] = None
++
++        # Optional background tick thread (disabled by default)
++        self._tick_thread: Optional[threading.Thread] = None
++        self._tick_running: bool = False
++
++    # ----------------------------------------------------------------------
++    # Lifecycle integration
++    # ----------------------------------------------------------------------
++
++    def on_runtime_initialized(self, runtime: Any) -> None:
++        with self._lock:
++            self.runtime_ready = True
++        logger.info("MonitoringOrchestrator: runtime initialized.")
++
++    def on_provider_manager_ready(self, provider_manager: Any) -> None:
++        with self._lock:
++            self.provider_manager_ready_flag = True
++        logger.info("MonitoringOrchestrator: provider manager ready.")
++
++    def on_asgi_ready(self, asgi_app: Any) -> None:
++        with self._lock:
++            self.asgi_ready_flag = True
++        logger.info("MonitoringOrchestrator: ASGI app ready.")
++
++    def on_bootstrap_complete(self) -> None:
++        with self._lock:
++            self.bootstrap_complete_flag = True
++        logger.info("MonitoringOrchestrator: bootstrap complete.")
++
++        # Optional: resolve dependencies once at bootstrap completion
++        if resolve_dependencies is not None:
++            try:
++                plan = resolve_dependencies()
++                self._dependency_plan = plan
++                logger.info(
++                    "MonitoringOrchestrator: dependency resolution plan computed "
++                    "(missing={}, issues={}).",
++                    len(plan.missing_dependencies),
++                    len(plan.env_issues),
++                )
++                if write_resolution_log is not None:
++                    write_resolution_log(plan, "dependency_resolver.jsonc")
++            except Exception as exc:
++                logger.warning(
++                    "MonitoringOrchestrator: dependency resolution failed safely: {}",
++                    exc,
++                )
++
++    # ----------------------------------------------------------------------
++    # Monitor registry helpers (logical only)
++    # ----------------------------------------------------------------------
++
++    def set_monitor_status(
++        self,
++        name: str,
++        status: str,
++        error: Optional[str] = None,
++    ) -> None:
++        with self._lock:
++            monitor = self.monitors.get(name)
++            if not monitor:
++                monitor = MonitorProcess(name=name, kind="terminal", status=status)
++                self.monitors[name] = monitor
++            monitor.status = status
++            monitor.last_error = error
++
++    # ----------------------------------------------------------------------
++    # Snapshot / diagnostics
++    # ----------------------------------------------------------------------
++
++    def get_snapshot(self) -> OrchestratorSnapshot:
++        with self._lock:
++            monitors_dict = {
++                name: asdict(monitor) for name, monitor in self.monitors.items()
++            }
++
++            plan_dict: Optional[Dict[str, Any]] = None
++            if self._dependency_plan is not None:
++                plan = self._dependency_plan
++                plan_dict = {
++                    "missing_dependencies": [asdict(d) for d in plan.missing_dependencies],
++                    "outdated_dependencies": [asdict(d) for d in plan.outdated_dependencies],
++                    "env_issues": [asdict(e) for e in plan.env_issues],
++                    "suggested_tasks": [asdict(t) for t in plan.suggested_tasks],
++                }
++
++            return OrchestratorSnapshot(
++                runtime_ready=self.runtime_ready,
++                provider_manager_ready=self.provider_manager_ready_flag,
++                asgi_ready=self.asgi_ready_flag,
++                bootstrap_complete=self.bootstrap_complete_flag,
++                monitors=monitors_dict,
++                dependency_plan=plan_dict,
++            )
++
++    # ----------------------------------------------------------------------
++    # Optional tick loop (disabled by default)
++    # ----------------------------------------------------------------------
++
++    def start_tick_loop(self, interval_seconds: float = 5.0) -> None:
++        with self._lock:
++            if self._tick_running:
++                return
++            self._tick_running = True
++
++        def _loop() -> None:
++            logger.info("MonitoringOrchestrator: tick loop started.")
++            while True:
++                with self._lock:
++                    if not self._tick_running:
++                        break
++                    logger.debug("MonitoringOrchestrator: tick.")
++                time.sleep(interval_seconds)
++            logger.info("MonitoringOrchestrator: tick loop stopped.")
++
++        self._tick_thread = threading.Thread(
++            target=_loop,
++            name="MonitoringOrchestratorTick",
++            daemon=True,
++        )
++        self._tick_thread.start()
++
++    def stop_tick_loop(self) -> None:
++        with self._lock:
++            self._tick_running = False
++
++
++# ---------------------------------------------------------------------------
++# Global orchestrator instance
++# ---------------------------------------------------------------------------
++
++_orchestrator: Optional[MonitoringOrchestrator] = None
++
++
++def _get_orchestrator() -> MonitoringOrchestrator:
++    global _orchestrator
++    if _orchestrator is None:
++        _orchestrator = MonitoringOrchestrator()
++    return _orchestrator
++
++
++# ---------------------------------------------------------------------------
++# FCC bootstrap hooks
++# ---------------------------------------------------------------------------
++
++def runtime_initialized(runtime: Any) -> None:
++    orch = _get_orchestrator()
++    try:
++        orch.on_runtime_initialized(runtime)
++    except Exception as exc:
++        logger.warning("runtime_initialized hook failed safely: {}", exc)
++
++
++def provider_manager_ready(provider_manager: Any) -> None:
++    orch = _get_orchestrator()
++    try:
++        orch.on_provider_manager_ready(provider_manager)
++    except Exception as exc:
++        logger.warning("provider_manager_ready hook failed safely: {}", exc)
++
++
++def asgi_ready(asgi_app: Any) -> None:
++    orch = _get_orchestrator()
++    try:
++        orch.on_asgi_ready(asgi_app)
++    except Exception as exc:
++        logger.warning("asgi_ready hook failed safely: {}", exc)
++
++
++def bootstrap_complete() -> None:
++    orch = _get_orchestrator()
++    try:
++        orch.on_bootstrap_complete()
++    except Exception as exc:
++        logger.warning("bootstrap_complete hook failed safely: {}", exc)
++
++
++# ---------------------------------------------------------------------------
++# Admin / Diagnostics helpers
++# ---------------------------------------------------------------------------
++
++def get_monitoring_snapshot() -> Dict[str, Any]:
++    orch = _get_orchestrator()
++    snap = orch.get_snapshot()
++    return asdict(snap)
++
++
++# ---------------------------------------------------------------------------
++# FCC-server expected entrypoint (added)
++# ---------------------------------------------------------------------------
++
++def start_monitoring_orchestrator():
++    """
++    FCC-server expects this function name.
++    Upstream FCC never auto-started the orchestrator, so this wrapper
++    simply initializes it and returns the instance.
++    """
++    try:
++        orch = _get_orchestrator()
++        print("[FCC] Monitoring orchestrator initialized.")
++        return orch
++    except Exception as exc:
++        print(f"[FCC] Monitoring orchestrator failed safely: {exc}")
++        return None
+diff --git fcc-main/src/free_claude_code/config/logging_config.py fcc-main/src/free_claude_code/config/logging_config.py
+new file mode 100644
+index 0000000..ea1ed98
+--- /dev/null
++++ fcc-main/src/free_claude_code/config/logging_config.py
+@@ -0,0 +1,264 @@
++"""
++Loguru-based structured logging configuration.
++
++Structured logs are written as JSON lines to a configurable path (default
++``logs/server.log``). Stdlib logging is intercepted and funneled to loguru.
++Context vars (request_id, node_id, chat_id) from contextualize() are
++included at top level for easy grep/filter.
++"""
++
++import json
++import logging
++import re
++import threading
++from pathlib import Path
++import os
++
++from loguru import logger
++
++# ---------------------------------------------------------------------------
++# Internal state
++# ---------------------------------------------------------------------------
++
++_configured = False
++_current_path: Path | None = None
++_current_level = "INFO"
++_current_verbose: bool | None = None
++_sink_id: int | None = None
++
++_THIRD_PARTY_LOGGERS = (
++    "openai",
++    "httpx",
++    "httpcore",
++    "httpcore.http11",
++    "httpcore.connection",
++    "telegram",
++    "telegram.ext",
++)
++
++# Loguru ``logger.bind()`` key used by structured TRACE payloads; ``core/trace.py``
++# uses the identical string constant ``TRACE_PAYLOAD_BINDING``.
++_TRACE_PAYLOAD_BINDING = "trace_payload"
++
++# Context keys we promote to top-level JSON for traceability / grep
++_CONTEXT_KEYS = (
++    "request_id",
++    "node_id",
++    "chat_id",
++    "claude_session_id",
++    "http_method",
++    "http_path",
++)
++
++_TELEGRAM_BOT_RE = re.compile(
++    r"(https?://api\.telegram\.org/)bot([0-9]+:[A-Za-z0-9_-]+)(/?)",
++    re.IGNORECASE,
++)
++# Authorization: Bearer <token> (HTTP client / proxy debug lines)
++_AUTH_BEARER_RE = re.compile(
++    r"(\bAuthorization\s*:\s*Bearer\s+)([^\s'\"]+)",
++    re.IGNORECASE,
++)
++
++
++# ---------------------------------------------------------------------------
++# Redaction helpers
++# ---------------------------------------------------------------------------
++
++def _redact_sensitive_substrings(message: str) -> str:
++    """Remove obvious API tokens and secrets before JSON log line emission."""
++    text = _TELEGRAM_BOT_RE.sub(r"\1bot<redacted>\3", message)
++    return _AUTH_BEARER_RE.sub(r"\1<redacted>", text)
++
++
++# ---------------------------------------------------------------------------
++# JSON serialization for structured logs
++# ---------------------------------------------------------------------------
++
++def _serialize_with_context(record) -> str:
++    """Format record as JSON with context vars at top level.
++    Returns a format template; we inject _json into record for output.
++    """
++    extra = record.get("extra", {})
++    out = {
++        "time": str(record["time"]),
++        "level": record["level"].name,
++        "message": _redact_sensitive_substrings(str(record["message"])),
++        "module": record["name"],
++        "function": record["function"],
++        "line": record["line"],
++    }
++
++    trace_payload = extra.get(_TRACE_PAYLOAD_BINDING)
++
++    for key in _CONTEXT_KEYS:
++        if key in extra and extra[key] is not None:
++            out[key] = extra[key]
++
++    if isinstance(trace_payload, dict):
++        for tk, tv in trace_payload.items():
++            if tk not in out:
++                out[tk] = tv
++        out["trace"] = True
++
++    record["_json"] = json.dumps(out, default=str)
++    return "{_json}\n"
++
++
++# ---------------------------------------------------------------------------
++# Stdlib → Loguru interception
++# ---------------------------------------------------------------------------
++
++class InterceptHandler(logging.Handler):
++    """Redirect stdlib logging to loguru."""
++
++    def __init__(self) -> None:
++        super().__init__()
++        self._local = threading.local()
++
++    def emit(self, record: logging.LogRecord) -> None:
++        if getattr(self._local, "active", False):
++            return
++
++        self._local.active = True
++        try:
++            try:
++                level = logger.level(record.levelname).name
++            except ValueError:
++                level = record.levelno
++
++            frame, depth = logging.currentframe(), 2
++            while frame is not None and frame.f_code.co_filename == logging.__file__:
++                frame = frame.f_back
++                depth += 1
++
++            logger.opt(depth=depth, exception=record.exc_info).log(
++                level, record.getMessage()
++            )
++        finally:
++            self._local.active = False
++
++
++# ---------------------------------------------------------------------------
++# Third-party log level control
++# ---------------------------------------------------------------------------
++
++def _set_third_party_levels(verbose: bool) -> None:
++    level = logging.NOTSET if verbose else logging.WARNING
++    for name in _THIRD_PARTY_LOGGERS:
++        logging.getLogger(name).setLevel(level)
++
++
++# ---------------------------------------------------------------------------
++# Loguru sink creation
++# ---------------------------------------------------------------------------
++
++def _add_file_sink(log_file: str | Path, level: str) -> int:
++    log_path = Path(log_file)
++    return logger.add(
++        log_path,
++        level=level,
++        format=_serialize_with_context,
++        encoding="utf-8",
++        mode="a",
++        rotation="50 MB",
++        retention=5,
++        enqueue=True,
++    )
++
++
++# ---------------------------------------------------------------------------
++# Main logging configuration
++# ---------------------------------------------------------------------------
++
++def configure_logging(
++    log_file: str | Path,
++    *,
++    force: bool = False,
++    verbose_third_party: bool = False,
++    level: str = "INFO",
++) -> None:
++    """Configure loguru with JSON output to log_file and intercept stdlib logging.
++
++    Idempotent: skips if already configured with the same path, level, and verbosity.
++    On path or level change, replaces only the file sink without truncating.
++    On verbosity change alone, updates only the third-party logger levels.
++    Use force=True to reconfigure from scratch.
++    """
++    global _configured, _current_path, _current_level, _current_verbose, _sink_id
++
++    log_path = Path(log_file).expanduser().resolve()
++    log_path.parent.mkdir(parents=True, exist_ok=True)
++
++    if (
++        _configured
++        and not force
++        and log_path == _current_path
++        and level == _current_level
++        and verbose_third_party == _current_verbose
++    ):
++        return
++
++    if not _configured or force:
++        _configured = True
++
++        logger.remove()
++
++        # Truncate file on first configuration
++        log_path.write_text("")
++
++        _sink_id = _add_file_sink(log_path, level)
++
++        intercept = InterceptHandler()
++        logging.root.handlers = [intercept]
++        logging.root.setLevel(logging.DEBUG)
++
++        _set_third_party_levels(verbose_third_party)
++
++    elif log_path != _current_path or level != _current_level:
++        if _sink_id is not None:
++            logger.remove(_sink_id)
++        _sink_id = _add_file_sink(log_path, level)
++
++        if verbose_third_party != _current_verbose:
++            _set_third_party_levels(verbose_third_party)
++
++    else:
++        _set_third_party_levels(verbose_third_party)
++
++    _current_path = log_path
++    _current_level = level
++    _current_verbose = verbose_third_party
++
++
++# ---------------------------------------------------------------------------
++# FCC Early Logging Initializer (Patch 1)
++# ---------------------------------------------------------------------------
++
++def ensure_logging_initialized_early():
++    """
++    Lightweight early initializer used by launchers and bootstrap.
++
++    - Calls configure_logging() with default FCC log path.
++    - Safe to call multiple times.
++    - Does NOT interfere with existing structured JSON logging.
++    - Ensures logging is active before any provider or bootstrap logic runs.
++    """
++
++    default_log_path = "fcc-server.run.log"
++
++    try:
++        configure_logging(
++            default_log_path,
++            force=False,
++            verbose_third_party=False,
++            level="INFO",
++        )
++    except Exception as e:
++        # Fallback to stdlib logging if Loguru fails early
++        logging.basicConfig(
++            filename="fcc-server.run.err.log",
++            level=logging.ERROR,
++            format="%(asctime)s %(levelname)s %(name)s %(message)s",
++        )
++        logging.error(f"Early logging initialization failed: {e}")
+diff --git fcc-main/src/free_claude_code/core/monitoring/terminal_monitors.py fcc-main/src/free_claude_code/core/monitoring/terminal_monitors.py
+new file mode 100644
+index 0000000..a9396f6
+--- /dev/null
++++ fcc-main/src/free_claude_code/core/monitoring/terminal_monitors.py
+@@ -0,0 +1,167 @@
++"""
++Terminal Monitor Manager
++
++Handles launching external terminal-based monitors:
++- btop
++- glances
++- htop
++- bottom (BoHTOM launcher)
++
++Non-blocking, best-effort, and never critical to core/L1.
++"""
++
++import subprocess
++import shutil
++import platform
++from typing import Dict, Optional
++from loguru import logger
++
++# ============================================================
++# ORIGINAL CLASS (kept exactly as-is)
++# ============================================================
++
++class TerminalMonitorManager:
++    def __init__(self) -> None:
++        # Detect external terminal tools
++        self.available: Dict[str, str] = {
++            "btop": shutil.which("btop"),
++            "glances": shutil.which("glances"),
++            "htop": shutil.which("htop"),
++
++            # bottom is NOT a system binary, so we mark it as "internal"
++            # and handle it separately in launch()
++            "bottom": "internal"
++        }
++
++    def status(self) -> Dict[str, str]:
++        """Return availability of terminal monitors."""
++        return dict(self.available)
++
++    def launch(self, name: str) -> str:
++        """Launch a terminal monitor if available."""
++        if name not in self.available:
++            return f"Unknown monitor: {name}"
++
++        if name == "bottom":
++            try:
++                # LOCAL IMPORT — breaks circular import
++                from .bottom_launcher import launch_bottom
++                return launch_bottom()
++            except Exception as e:
++                return f"Failed to launch bottom monitor: {e}"
++
++        path = self.available[name]
++        if not path:
++            return f"{name} is not installed."
++
++        try:
++            subprocess.Popen([path])
++            return f"Launched {name}"
++        except Exception as e:
++            return f"Failed to launch {name}: {e}"
++
++
++# ============================================================
++# ENHANCED CLASS — OPTIONAL, NON-BREAKING, ADDITIVE
++# ============================================================
++
++class EnhancedTerminalMonitorManager(TerminalMonitorManager):
++    """
++    Enhanced version of TerminalMonitorManager.
++
++    Adds:
++    - structured logging
++    - instance tagging
++    - unified return objects
++    - fallback monitor launching
++    - batch launching
++    - Windows terminal support
++    - safe-mode error handling
++    """
++
++    def __init__(self, instance_id: Optional[str] = None) -> None:
++        super().__init__()
++        self.instance_id = instance_id or "default"
++        logger.info(f"[Monitor] EnhancedTerminalMonitorManager initialized (instance={self.instance_id})")
++
++    def _launch_external(self, name: str, path: str) -> Dict[str, str]:
++        """Launch external binary monitors with Windows terminal support."""
++        try:
++            if platform.system().lower() == "windows":
++                subprocess.Popen(["wt.exe", path])
++            else:
++                subprocess.Popen([path])
++
++            logger.info(f"[Monitor] Launched {name} (instance={self.instance_id})")
++
++            return {
++                "monitor": name,
++                "status": "launched",
++                "path": path,
++                "instance": self.instance_id,
++            }
++        except Exception as e:
++            logger.error(f"[Monitor] Failed to launch {name}: {e}")
++            return {
++                "monitor": name,
++                "status": "error",
++                "error": str(e),
++                "instance": self.instance_id,
++            }
++
++    def launch(self, name: str) -> Dict[str, str]:
++        """Launch a terminal monitor with structured output."""
++        if name not in self.available:
++            return {"monitor": name, "status": "unknown", "instance": self.instance_id}
++
++        if name == "bottom":
++            try:
++                # LOCAL IMPORT — breaks circular import
++                from .bottom_launcher import launch_bottom
++                launch_bottom()
++                logger.info(f"[Monitor] Launched bottom (instance={self.instance_id})")
++                return {
++                    "monitor": "bottom",
++                    "status": "launched",
++                    "path": "internal",
++                    "instance": self.instance_id,
++                }
++            except Exception as e:
++                logger.error(f"[Monitor] Failed to launch bottom: {e}")
++                return {
++                    "monitor": "bottom",
++                    "status": "error",
++                    "error": str(e),
++                    "instance": self.instance_id,
++                }
++
++        path = self.available[name]
++        if not path:
++            logger.warning(f"[Monitor] {name} not installed (instance={self.instance_id})")
++            return {
++                "monitor": name,
++                "status": "missing",
++                "instance": self.instance_id,
++            }
++
++        return self._launch_external(name, path)
++
++    def launch_all(self) -> Dict[str, Dict[str, str]]:
++        """Launch all available monitors."""
++        results = {}
++        for name, path in self.available.items():
++            results[name] = self.launch(name)
++        return results
++
++
++# ============================================================
++# FCC-SERVER EXPECTED ENTRYPOINT (UPSTREAM COMPATIBLE)
++# ============================================================
++
++def start_monitoring():
++    """
++    FCC-server expects this function name.
++    We route it to the enhanced monitoring cluster.
++    """
++    manager = EnhancedTerminalMonitorManager(instance_id="fcc-server")
++    manager.launch_all()
