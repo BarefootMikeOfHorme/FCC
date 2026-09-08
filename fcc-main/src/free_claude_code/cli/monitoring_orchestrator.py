@@ -140,7 +140,6 @@ class MonitoringOrchestrator:
                     len(plan.missing_dependencies),
                     len(plan.env_issues),
                 )
-                # Optional: write a log next to FCC logs
                 if write_resolution_log is not None:
                     write_resolution_log(plan, "dependency_resolver.jsonc")
             except Exception as exc:
@@ -179,7 +178,6 @@ class MonitoringOrchestrator:
 
             plan_dict: Optional[Dict[str, Any]] = None
             if self._dependency_plan is not None:
-                # Convert ResolutionPlan dataclass to dict
                 plan = self._dependency_plan
                 plan_dict = {
                     "missing_dependencies": [asdict(d) for d in plan.missing_dependencies],
@@ -202,14 +200,6 @@ class MonitoringOrchestrator:
     # ----------------------------------------------------------------------
 
     def start_tick_loop(self, interval_seconds: float = 5.0) -> None:
-        """
-        Start a lightweight background tick loop.
-
-        Currently only logs heartbeat; you can extend this to:
-        - refresh metrics
-        - prune dead monitors
-        - emit events
-        """
         with self._lock:
             if self._tick_running:
                 return
@@ -221,7 +211,6 @@ class MonitoringOrchestrator:
                 with self._lock:
                     if not self._tick_running:
                         break
-                    # Placeholder: you can add metrics refresh here.
                     logger.debug("MonitoringOrchestrator: tick.")
                 time.sleep(interval_seconds)
             logger.info("MonitoringOrchestrator: tick loop stopped.")
@@ -253,13 +242,10 @@ def _get_orchestrator() -> MonitoringOrchestrator:
 
 
 # ---------------------------------------------------------------------------
-# FCC bootstrap hooks (imported by runtime/bootstrap.py)
+# FCC bootstrap hooks
 # ---------------------------------------------------------------------------
 
 def runtime_initialized(runtime: Any) -> None:
-    """
-    Called by bootstrap after ApplicationRuntime is constructed.
-    """
     orch = _get_orchestrator()
     try:
         orch.on_runtime_initialized(runtime)
@@ -268,9 +254,6 @@ def runtime_initialized(runtime: Any) -> None:
 
 
 def provider_manager_ready(provider_manager: Any) -> None:
-    """
-    Called by bootstrap after ProviderRuntimeManager is constructed.
-    """
     orch = _get_orchestrator()
     try:
         orch.on_provider_manager_ready(provider_manager)
@@ -279,9 +262,6 @@ def provider_manager_ready(provider_manager: Any) -> None:
 
 
 def asgi_ready(asgi_app: Any) -> None:
-    """
-    Called by bootstrap after RuntimeASGIApp is constructed.
-    """
     orch = _get_orchestrator()
     try:
         orch.on_asgi_ready(asgi_app)
@@ -290,9 +270,6 @@ def asgi_ready(asgi_app: Any) -> None:
 
 
 def bootstrap_complete() -> None:
-    """
-    Called by bootstrap after build_asgi_app() returns successfully.
-    """
     orch = _get_orchestrator()
     try:
         orch.on_bootstrap_complete()
@@ -301,13 +278,29 @@ def bootstrap_complete() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Admin / Diagnostics helpers (optional)
+# Admin / Diagnostics helpers
 # ---------------------------------------------------------------------------
 
 def get_monitoring_snapshot() -> Dict[str, Any]:
-    """
-    Helper for Admin / Diagnostics UI to fetch a JSON-serializable snapshot.
-    """
     orch = _get_orchestrator()
     snap = orch.get_snapshot()
     return asdict(snap)
+
+
+# ---------------------------------------------------------------------------
+# FCC-server expected entrypoint (added)
+# ---------------------------------------------------------------------------
+
+def start_monitoring_orchestrator():
+    """
+    FCC-server expects this function name.
+    Upstream FCC never auto-started the orchestrator, so this wrapper
+    simply initializes it and returns the instance.
+    """
+    try:
+        orch = _get_orchestrator()
+        print("[FCC] Monitoring orchestrator initialized.")
+        return orch
+    except Exception as exc:
+        print(f"[FCC] Monitoring orchestrator failed safely: {exc}")
+        return None
