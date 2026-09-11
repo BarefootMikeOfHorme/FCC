@@ -1,0 +1,22 @@
+# Dev/test dependencies. This file includes runtime deps first for CI reproducibility.
+-r requirements.txt
+
+# Testing
+pytest>=9.1.1
+pytest-asyncio>=1.4.0
+pytest-cov>=7.1.0
+pytest-xdist>=3.8.0
+pytest-playwright>=0.9.0
+
+# Linters / formatters / tooling
+ruff>=0.16.2
+black
+isort
+flake8
+
+# Packaging / reproducible installs
+pip-tools
+
+# Optional developer helpers
+ipython
+pre-commit
