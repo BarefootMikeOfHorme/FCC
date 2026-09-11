@@ -1,0 +1,11 @@
+{
+  "upstream_base_url": "https://raw.githubusercontent.com/your-org/fcc-templates/main/",
+  "mapping": {
+    "templates/config.yaml": "config.yaml",
+    "templates/providers.json": "providers.json",
+    "templates/checksums.json": "checksums.json",
+    "templates/health/README.md": "health/README.md"
+  },
+  "never_overwrite": ["secrets.json", "secrets.placeholder.json"],
+  "notes": "Explicit mapping because our layout differs from the inspiration repo."
+}
