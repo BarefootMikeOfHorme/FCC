@@ -1,0 +1,7 @@
+{
+  "admin_setup_required": true,
+  "admin": {
+    "username": "admin",
+    "password_hash": null
+  }
+}

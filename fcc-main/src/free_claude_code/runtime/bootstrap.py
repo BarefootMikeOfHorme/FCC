@@ -1,17 +1,13 @@
-"""
-Single production composition root for the FCC server.
+"""Construct the production FCC ASGI application and its owned resources."""
 
-Enhanced:
-- Added orchestrator hook imports (safe-to-fail).
-- Added server_ready_marker(), runtime_initialized(), provider_manager_ready(),
-  asgi_ready(), bootstrap_complete() hook calls.
-- Added restart_callback(runtime) support.
-- Fully backwards compatible with existing FCC runtime architecture.
-"""
+from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+
+from loguru import logger
 
 from free_claude_code.api.app import create_app
 from free_claude_code.api.ports import ApiServices
@@ -35,37 +31,47 @@ from .asgi import RuntimeASGIApp
 from .codex_catalog import CodexModelCatalogPublisher
 from .provider_manager import ProviderRuntimeManager
 
+ProviderManagerReadyHook = Callable[[ProviderRuntimeManager], None]
+RuntimeInitializedHook = Callable[[ApplicationRuntime], None]
+AsgiReadyHook = Callable[[RuntimeASGIApp], None]
+BootstrapCompleteHook = Callable[[], None]
 
-# ---------------------------------------------------------------------------
-# Safe-to-fail orchestrator hook imports
-# ---------------------------------------------------------------------------
+provider_manager_ready: ProviderManagerReadyHook | None
+runtime_initialized: RuntimeInitializedHook | None
+asgi_ready: AsgiReadyHook | None
+bootstrap_complete: BootstrapCompleteHook | None
+_monitoring_import_error: ImportError | None = None
 
 try:
     from free_claude_code.cli.monitoring_orchestrator import (
-        runtime_initialized,
-        provider_manager_ready,
         asgi_ready,
         bootstrap_complete,
+        provider_manager_ready,
+        runtime_initialized,
     )
-except Exception:
-    runtime_initialized = None
+except ImportError as exc:
     provider_manager_ready = None
+    runtime_initialized = None
     asgi_ready = None
     bootstrap_complete = None
+    _monitoring_import_error = exc
 
 
-# ---------------------------------------------------------------------------
-# Monitoring Orchestrator Readiness Marker
-# ---------------------------------------------------------------------------
+def _run_hook(name: str, hook: Callable[..., None] | None, *args: object) -> None:
+    """Run an optional monitoring hook without making startup unavailable."""
+    if hook is None:
+        return
+    try:
+        hook(*args)
+    except Exception as exc:
+        logger.warning(
+            "Monitoring hook failed: hook={} exc_type={}", name, type(exc).__name__
+        )
+
 
 def server_ready_marker() -> None:
-    """Marker function for monitoring orchestrator."""
-    print("[FCC] Server runtime initialized (bootstrap ready).")
+    logger.info("Server runtime initialized and ready to accept requests")
 
-
-# ---------------------------------------------------------------------------
-# Provider Construction Helpers
-# ---------------------------------------------------------------------------
 
 def _create_openai_provider(
     config: ProviderConfig,
@@ -74,28 +80,23 @@ def _create_openai_provider(
     *,
     auth: OpenAIAuthManager,
 ) -> BaseProvider:
-    """Construct an OpenAI Codex provider."""
     return OpenAICodexProvider(config, auth=auth, admission=admission)
 
 
 def _required_voice_key(api_key: str | None) -> str:
-    """Validate required voice key for NIM."""
-    if api_key is None:
+    if not api_key:
         raise AssertionError("NIM voice settings were not validated")
     return api_key
 
 
 def _create_transcriber(settings: Settings) -> Transcriber | None:
-    """Construct a transcriber based on settings."""
     if not settings.voice_note_enabled:
         return None
-
     if settings.whisper_device == "nvidia_nim":
         return NvidiaNimTranscriber(
             model=settings.whisper_model,
             api_key=_required_voice_key(settings.nvidia_nim_api_key),
         )
-
     return TranscriptionService(
         model=settings.whisper_model,
         device=settings.whisper_device,
@@ -103,105 +104,48 @@ def _create_transcriber(settings: Settings) -> Transcriber | None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Main ASGI Application Builder
-# ---------------------------------------------------------------------------
-
 def build_asgi_app(
-    settings: Settings,
-    restart_callback: RestartCallback | None = None,
+    settings: Settings, restart_callback: RestartCallback | None = None
 ) -> RuntimeASGIApp:
-    """
-    Construct the complete server application and its resource owner.
-    This is the main composition root for FCC.
-    """
-
-    # Configure logging
-    log_path = Path(os.getenv("LOG_FILE", server_log_path()))
+    """Construct the complete server application and its resource owner."""
     configure_logging(
-        log_path,
+        Path(os.getenv("LOG_FILE") or server_log_path()),
         level=settings.log_level,
         verbose_third_party=settings.log_raw_api_payloads,
     )
-
-    # Provider admission + auth
+    if _monitoring_import_error is not None:
+        logger.warning(
+            "Monitoring hooks are unavailable: exc_type={}",
+            type(_monitoring_import_error).__name__,
+        )
     openai_auth = OpenAIAuthManager(proxy=settings.openai_proxy)
     openai_factory = partial(_create_openai_provider, auth=openai_auth)
-
-    # Provider constructor factory
     provider_constructor = partial(
-        create_provider,
-        injected_factories={"openai": openai_factory},
+        create_provider, injected_factories={"openai": openai_factory}
     )
-
-    # Provider runtime factory
     runtime_factory = partial(
-        ProviderRuntime,
-        provider_constructor=provider_constructor,
+        ProviderRuntime, provider_constructor=provider_constructor
     )
-
-    # Provider manager
     provider_manager = ProviderRuntimeManager(
         settings,
         runtime_factory=runtime_factory,
         connected_provider_ids=openai_auth.connected_provider_ids,
         model_catalog_publisher=CodexModelCatalogPublisher(),
     )
-
-    # Orchestrator hook: provider manager ready
-    if provider_manager_ready:
-        try:
-            provider_manager_ready(provider_manager)
-        except Exception:
-            pass
-
-    # Application runtime
+    _run_hook("provider_manager_ready", provider_manager_ready, provider_manager)
     runtime = ApplicationRuntime(
         provider_manager,
         transcriber=_create_transcriber(settings),
         restart_callback=restart_callback,
         connected_accounts={"openai": openai_auth},
     )
+    _run_hook("runtime_initialized", runtime_initialized, runtime)
+    services = ApiServices(requests=provider_manager, admin=runtime, tasks=runtime)
 
-    # Orchestrator hook: runtime initialized
-    if runtime_initialized:
-        try:
-            runtime_initialized(runtime)
-        except Exception:
-            pass
+    def on_started() -> None:
+        server_ready_marker()
+        _run_hook("bootstrap_complete", bootstrap_complete)
 
-    # Optional restart callback
-    if restart_callback:
-        try:
-            restart_callback(runtime)
-        except Exception:
-            pass
-
-    # API services
-    services = ApiServices(
-        requests=provider_manager,
-        admin=runtime,
-        tasks=runtime,
-    )
-
-    # Monitoring orchestrator readiness marker
-    server_ready_marker()
-
-    # Construct ASGI app
-    asgi_app = RuntimeASGIApp(create_app(services), runtime)
-
-    # Orchestrator hook: ASGI ready
-    if asgi_ready:
-        try:
-            asgi_ready(asgi_app)
-        except Exception:
-            pass
-
-    # Orchestrator hook: bootstrap complete
-    if bootstrap_complete:
-        try:
-            bootstrap_complete()
-        except Exception:
-            pass
-
+    asgi_app = RuntimeASGIApp(create_app(services), runtime, on_started=on_started)
+    _run_hook("asgi_ready", asgi_ready, asgi_app)
     return asgi_app

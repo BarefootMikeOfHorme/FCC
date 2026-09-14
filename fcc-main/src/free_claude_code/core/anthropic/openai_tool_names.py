@@ -1,5 +1,7 @@
 """Reversible tool names for Anthropic-to-OpenAI protocol conversion."""
 
+from __future__ import annotations
+
 import hashlib
 import re
 from collections.abc import Iterable

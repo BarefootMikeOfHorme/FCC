@@ -1,5 +1,7 @@
 """Detached transition values crossing the messaging tree ownership boundary."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 

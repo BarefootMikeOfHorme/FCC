@@ -1,5 +1,7 @@
 """FastAPI streaming response wrappers for public API wire formats."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import (
     AsyncIterator,
@@ -95,7 +97,7 @@ class ManagedStreamingResponse(StreamingResponse):
             preserved_error = exc
             raise
         finally:
-            await self._close(preserved_error=preserved_error)
+            await self._close(preservederved_error=preserved_error)
 
     async def _cleanup(self, *, preserved_error: BaseException | None) -> None:
         try:
@@ -126,7 +128,6 @@ async def _wait_for_cleanup(task: asyncio.Task[None]) -> None:
         except asyncio.CancelledError as exc:
             cancellation = exc
 
-    # Ordinary defensive failures are trace-only; cancellation remains control flow.
     try:
         task.result()
     except asyncio.CancelledError:

@@ -1,11 +1,9 @@
 """Rich terminal output formatter for Free Claude Code.
 
-This module provides rich-formatted output capabilities including:
-- Progress bars for long-running operations
-- Colored output for different verbosity levels
-- Structured display panels
-- Live updating displays
-- Integration with output schemas
+Enhanced version:
+- Supports TEXT, JSON, JSONC, YAML, YAML-C, MD, HTML, CBOR
+- Uses enhanced output_schemas formatters
+- Provides rich panels, tables, live displays, progress bars
 """
 
 from __future__ import annotations
@@ -26,7 +24,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
-from rich.align import Align
 from rich import box
 
 from .output_schemas import (
@@ -56,14 +53,7 @@ except Exception:
 
 
 class RichOutputFormatter:
-    """Rich terminal output formatter for FCC.
-
-    This formatter wraps Rich primitives and FCC output schemas to provide:
-    - Verbosity-aware rendering
-    - Safe-to-fail terminal output
-    - Structured panels and tables
-    - Progress and status visualization
-    """
+    """Rich terminal output formatter for FCC."""
 
     def __init__(self, verbosity: VerbosityLevel = VerbosityLevel.NORMAL):
         self.verbosity = verbosity
@@ -88,76 +78,83 @@ class RichOutputFormatter:
             verbosity=str(self.verbosity),
         )
 
-        if fmt == OutputFormat.JSON:
-            return response.model_dump_json(
-                indent=2 if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG) else None
-            )
+        formatted = format_query_response(response, self.verbosity, fmt)
 
-        elif fmt == OutputFormat.MARKDOWN:
-            md_content = format_query_response(response, self.verbosity, OutputFormat.MARKDOWN)
+        # Non-text formats: wrap in a panel for terminal display
+        if fmt in (
+            OutputFormat.JSON,
+            OutputFormat.JSONC,
+            OutputFormat.YAML,
+            OutputFormat.YAMLC,
+            OutputFormat.HTML,
+            OutputFormat.CBOR,
+        ):
+            return Panel(str(formatted), title="[bold blue]Claude Response[/bold blue]", border_style="blue")
+
+        if fmt == OutputFormat.MARKDOWN:
             return Panel(
-                md_content,
+                formatted,
                 title="[bold blue]Claude Response[/bold blue]",
                 border_style="blue",
                 padding=(1, 2),
             )
 
-        else:  # TEXT
-            if self.verbosity == VerbosityLevel.QUIET:
-                return response.response
+        # TEXT
+        if self.verbosity == VerbosityLevel.QUIET:
+            return response.response
 
-            elif self.verbosity == VerbosityLevel.NORMAL:
-                text = Text(response.response)
-                if response.latency_ms:
-                    text.append(f"\n[{response.latency_ms:.0f}ms]", style="dim")
-                return Panel(text, border_style="dim")
+        elif self.verbosity == VerbosityLevel.NORMAL:
+            text = Text(response.response)
+            if response.latency_ms:
+                text.append(f"\n[{response.latency_ms:.0f}ms]", style="dim")
+            return Panel(text, border_style="dim")
 
-            else:  # VERBOSE, DEBUG, TRACE
-                content = Text(response.response)
+        else:  # VERBOSE / DEBUG / TRACE
+            content = Text(response.response)
 
-                metadata_lines = [
-                    "",
-                    f"[bold]Model:[/bold] {response.model_used}",
-                    f"[bold]Time:[/bold] {response.timestamp}",
-                ]
+            metadata_lines = [
+                "",
+                f"[bold]Model:[/bold] {response.model_used}",
+                f"[bold]Time:[/bold] {response.timestamp}",
+            ]
 
-                if response.request_id:
-                    metadata_lines.append(f"[bold]Request ID:[/bold] {response.request_id}")
-                if response.session_id:
-                    metadata_lines.append(f"[bold]Session ID:[/bold] {response.session_id}")
+            if response.request_id:
+                metadata_lines.append(f"[bold]Request ID:[/bold] {response.request_id}")
+            if response.session_id:
+                metadata_lines.append(f"[bold]Session ID:[/bold] {response.session_id}")
 
-                if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG):
-                    metadata_lines.extend(
-                        [
-                            "",
-                            "[bold]Token Usage:[/bold]",
-                            f"  Prompt: {response.prompt_tokens or 0}",
-                            f"  Completion: {response.completion_tokens or 0}",
-                            f"  Total: {response.total_tokens or 0}",
-                            "",
-                            "[bold]Performance:[/bold]",
-                            f"  Latency: {response.latency_ms or 0:.1f}ms",
-                            f"  Time to First Token: {response.time_to_first_token or 0:.1f}ms",
-                            "",
-                            "[bold]Quality Scores:[/bold]",
-                            f"  Safety: {response.safety_score or 0:.2f}",
-                            f"  Relevance: {response.relevance_score or 0:.2f}",
-                        ]
-                    )
-
-                    if response.metadata:
-                        metadata_lines.extend(["", "[bold]Additional Metadata:[/bold]"])
-                        for key, value in response.metadata.items():
-                            metadata_lines.append(f"  {key}: {value}")
-
-                content.append("\n".join(metadata_lines))
-
-                return Panel(
-                    content,
-                    title="[bold blue]Claude Response[/bold blue]",
-                    border_style="blue",
-                    padding=(1, 2),
+            if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG):
+                metadata_lines.extend(
+                    [
+                        "",
+                        "[bold]Token Usage:[/bold]",
+                        f"  Prompt: {response.prompt_tokens or 0}",
+                        f"  Completion: {response.completion_tokens or 0}",
+                        f"  Total: {response.total_tokens or 0}",
+                        "",
+                        "[bold]Performance:[/bold]",
+                        f"  Latency: {response.latency_ms or 0:.1f}ms",
+                        f"  Time to First Token: {response.time_to_first_token or 0:.1f}ms",
+                        "",
+                        "[bold]Quality Scores:[/bold]",
+                        f"  Safety: {response.safety_score or 0:.2f}",
+                        f"  Relevance: {response.relevance_score or 0:.2f}",
+                    ]
                 )
+
+                if response.metadata:
+                    metadata_lines.extend(["", "[bold]Additional Metadata:[/bold]"])
+                    for key, value in response.metadata.items():
+                        metadata_lines.append(f"  {key}: {value}")
+
+            content.append("\n".join(metadata_lines))
+
+            return Panel(
+                content,
+                title="[bold blue]Claude Response[/bold blue]",
+                border_style="blue",
+                padding=(1, 2),
+            )
 
     # ------------------------------------------------------------------
     # Log entry formatting
@@ -175,76 +172,78 @@ class RichOutputFormatter:
             level=entry.level,
         )
 
-        if fmt == OutputFormat.JSON:
-            return entry.model_dump_json(
-                indent=2 if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG) else None
+        formatted = format_log_entry(entry, self.verbosity, fmt)
+
+        if fmt in (
+            OutputFormat.JSON,
+            OutputFormat.JSONC,
+            OutputFormat.YAML,
+            OutputFormat.YAMLC,
+            OutputFormat.HTML,
+            OutputFormat.CBOR,
+        ):
+            return Panel(str(formatted), title="[bold]Log Entry[/bold]", border_style="dim")
+
+        if self.verbosity == VerbosityLevel.QUIET:
+            if entry.level in ("ERROR", "CRITICAL"):
+                level_style = "red" if entry.level == "ERROR" else "bold red"
+                return Text(f"{entry.level}: {entry.message}", style=level_style)
+            return ""
+
+        elif self.verbosity == VerbosityLevel.NORMAL:
+            level_styles = {
+                "DEBUG": "dim",
+                "INFO": "white",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "bold red",
+                "SECURITY": "magenta",
+            }
+            style = level_styles.get(entry.level, "white")
+            return Text(f"{entry.level}: {entry.message}", style=style)
+
+        else:  # VERBOSE / DEBUG / TRACE
+            table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
+            table.add_column("Field", style="dim", width=12)
+            table.add_column("Value")
+
+            table.add_row("Timestamp", entry.timestamp)
+            table.add_row("Level", self._format_log_level(entry.level))
+            table.add_row("Message", entry.message)
+            table.add_row("Source", f"{entry.module}:{entry.function}:{entry.line}")
+
+            context_added = False
+            if entry.request_id or entry.session_id:
+                table.add_row("", "")
+                context_added = True
+                if entry.request_id:
+                    table.add_row("Request ID", entry.request_id)
+                if entry.session_id:
+                    table.add_row("Session ID", entry.session_id)
+
+            if isinstance(entry, SecurityAuditLogEntry):
+                if not context_added:
+                    table.add_row("", "")
+                table.add_row("Security Level", entry.security_level)
+                table.add_row("Event Type", entry.event_type)
+                if entry.action_taken:
+                    table.add_row("Action Taken", entry.action_taken)
+                if entry.outcome:
+                    table.add_row("Outcome", entry.outcome)
+                if entry.source_ip:
+                    table.add_row("Source IP", entry.source_ip)
+
+            if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG) and entry.metadata:
+                table.add_row("", "")
+                for key, value in entry.metadata.items():
+                    table.add_row(f"Metadata.{key}", str(value))
+
+            return Panel(
+                table,
+                title="[bold]Log Entry[/bold]",
+                border_style=self._get_log_level_color(entry.level),
+                padding=(0, 1),
             )
-
-        elif fmt == OutputFormat.MARKDOWN:
-            md_content = format_log_entry(entry, self.verbosity, OutputFormat.MARKDOWN)
-            return Panel(md_content, title="[bold]Log Entry[/bold]", border_style="dim")
-
-        else:  # TEXT
-            if self.verbosity == VerbosityLevel.QUIET:
-                if entry.level in ("ERROR", "CRITICAL"):
-                    level_style = "red" if entry.level == "ERROR" else "bold red"
-                    return Text(f"{entry.level}: {entry.message}", style=level_style)
-                return ""
-
-            elif self.verbosity == VerbosityLevel.NORMAL:
-                level_styles = {
-                    "DEBUG": "dim",
-                    "INFO": "white",
-                    "WARNING": "yellow",
-                    "ERROR": "red",
-                    "CRITICAL": "bold red",
-                    "SECURITY": "magenta",
-                }
-                style = level_styles.get(entry.level, "white")
-                return Text(f"{entry.level}: {entry.message}", style=style)
-
-            else:  # VERBOSE, DEBUG, TRACE
-                table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
-                table.add_column("Field", style="dim", width=12)
-                table.add_column("Value")
-
-                table.add_row("Timestamp", entry.timestamp)
-                table.add_row("Level", self._format_log_level(entry.level))
-                table.add_row("Message", entry.message)
-                table.add_row("Source", f"{entry.module}:{entry.function}:{entry.line}")
-
-                context_added = False
-                if entry.request_id or entry.session_id:
-                    table.add_row("", "")
-                    context_added = True
-                    if entry.request_id:
-                        table.add_row("Request ID", entry.request_id)
-                    if entry.session_id:
-                        table.add_row("Session ID", entry.session_id)
-
-                if isinstance(entry, SecurityAuditLogEntry):
-                    if not context_added:
-                        table.add_row("", "")
-                    table.add_row("Security Level", entry.security_level)
-                    table.add_row("Event Type", entry.event_type)
-                    if entry.action_taken:
-                        table.add_row("Action Taken", entry.action_taken)
-                    if entry.outcome:
-                        table.add_row("Outcome", entry.outcome)
-                    if entry.source_ip:
-                        table.add_row("Source IP", entry.source_ip)
-
-                if self.verbosity in (VerbosityLevel.VERBOSE, VerbosityLevel.DEBUG) and entry.metadata:
-                    table.add_row("", "")
-                    for key, value in entry.metadata.items():
-                        table.add_row(f"Metadata.{key}", str(value))
-
-                return Panel(
-                    table,
-                    title="[bold]Log Entry[/bold]",
-                    border_style=self._get_log_level_color(entry.level),
-                    padding=(0, 1),
-                )
 
     def _format_log_level(self, level: str) -> Text:
         level_colors = {
@@ -277,44 +276,22 @@ class RichOutputFormatter:
         description: str = "Processing...",
         total: Optional[int] = None,
     ) -> Progress:
-        trace_event(
-            "rich_formatter.create_progress_bar",
-            description=description,
-            total=total,
-        )
+        trace_event("rich_formatter.create_progress_bar", description=description, total=total)
 
         progress_columns = [
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
         ]
-
-        if total is not None:
-            progress_columns.append(
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%")
-            )
-
-        progress_columns.extend(
-            [
-                TimeElapsedColumn(),
-                TimeRemainingColumn(),
-            ]
-        )
 
         self._progress = Progress(*progress_columns, console=self.console)
         return self._progress
 
-    def start_progress(
-        self,
-        description: str = "Processing...",
-        total: Optional[int] = None,
-    ) -> int:
-        trace_event(
-            "rich_formatter.start_progress",
-            description=description,
-            total=total,
-        )
+    def start_progress(self, description: str = "Processing...", total: Optional[int] = None) -> int:
+        trace_event("rich_formatter.start_progress", description=description, total=total)
 
         if self._progress is None:
             self.create_progress_bar(description, total)
@@ -323,18 +300,8 @@ class RichOutputFormatter:
         self._progress.start()
         return task_id
 
-    def update_progress(
-        self,
-        task_id: int,
-        advance: int = 1,
-        description: Optional[str] = None,
-    ):
-        trace_event(
-            "rich_formatter.update_progress",
-            task_id=task_id,
-            advance=advance,
-            description=description,
-        )
+    def update_progress(self, task_id: int, advance: int = 1, description: Optional[str] = None):
+        trace_event("rich_formatter.update_progress", task_id=task_id, advance=advance, description=description)
 
         if self._progress:
             self._progress.update(task_id, advance=advance, description=description)
@@ -375,6 +342,7 @@ class RichOutputFormatter:
         if self._live_display:
             self._live_display.update(content)
 
+
 # ------------------------------------------------------------------
 # Global formatter instance
 # ------------------------------------------------------------------
@@ -384,17 +352,14 @@ _global_formatter: Optional[RichOutputFormatter] = None
 def get_rich_formatter(
     verbosity: VerbosityLevel = VerbosityLevel.NORMAL,
 ) -> RichOutputFormatter:
-    """Return a global RichOutputFormatter instance."""
     global _global_formatter
-    if (
-        _global_formatter is None
-        or _global_formatter.verbosity != verbosity
-    ):
+    if _global_formatter is None or _global_formatter.verbosity != verbosity:
         _global_formatter = RichOutputFormatter(verbosity)
     return _global_formatter
 
+
 # ------------------------------------------------------------------
-# Convenience wrappers used by CLI and logging_integration
+# Convenience wrappers
 # ------------------------------------------------------------------
 
 def format_and_print_query(

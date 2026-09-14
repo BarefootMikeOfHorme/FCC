@@ -1,5 +1,7 @@
 """Provider-owned admission, concurrency, and coordinated retry lifecycle."""
 
+from __future__ import annotations
+
 import asyncio
 import math
 import random
@@ -22,6 +24,7 @@ from free_claude_code.providers.failure_policy import (
     is_retryable_provider_error,
     retryable_upstream_status,
 )
+
 
 T = TypeVar("T")
 
@@ -923,7 +926,7 @@ def _retry_after_seconds(error: Exception) -> float | None:
     except ValueError:
         try:
             retry_at = parsedate_to_datetime(stripped)
-        except TypeError, ValueError, OverflowError:
+        except (TypeError, ValueError, OverflowError):
             return None
         if retry_at.tzinfo is None:
             retry_at = retry_at.replace(tzinfo=UTC)

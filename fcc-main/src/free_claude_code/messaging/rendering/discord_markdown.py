@@ -4,12 +4,15 @@ Discord uses standard markdown: **bold**, *italic*, `code`, ```code block```.
 Used by the message handler and Discord platform adapter.
 """
 
+from __future__ import annotations
+
 from markdown_it import MarkdownIt
 
 from .markdown_tables import normalize_gfm_tables
 
 # Discord escapes: \ * _ ` ~ | >
 DISCORD_SPECIAL = set("\\*_`~|>")
+
 
 _MD = MarkdownIt("commonmark", {"html": False, "breaks": False})
 _MD.enable("strikethrough")
@@ -57,7 +60,11 @@ def render_markdown_to_discord(text: str) -> str:
     if not text:
         return ""
 
-    text = normalize_gfm_tables(text)
+    # Normalize tables first
+    lines = text.splitlines()
+    lines = normalize_gfm_tables(lines)
+    text = "\n".join(lines)
+
     tokens = _MD.parse(text)
 
     def render_inline_table_plain(children) -> str:
@@ -145,6 +152,7 @@ def render_markdown_to_discord(text: str) -> str:
     while i < len(tokens):
         tok = tokens[i]
         t = tok.type
+
         if t == "paragraph_open":
             pass
         elif t == "paragraph_close":
@@ -168,14 +176,14 @@ def render_markdown_to_discord(text: str) -> str:
                     if val is not None:
                         try:
                             start = int(val)
-                        except TypeError, ValueError:
+                        except (TypeError, ValueError):
                             start = 1
                 else:
                     for key, val in tok.attrs:
                         if key == "start":
                             try:
                                 start = int(val)
-                            except TypeError, ValueError:
+                            except (TypeError, ValueError):
                                 start = 1
                             break
             list_stack.append({"type": "ordered", "index": start})
@@ -190,7 +198,7 @@ def render_markdown_to_discord(text: str) -> str:
                     pending_prefix = "- "
                 else:
                     pending_prefix = f"{top['index']}. "
-                    top["index"] += 1
+                top["index"] += 1
         elif t == "list_item_close":
             out.append("\n")
         elif t == "blockquote_open":
@@ -265,7 +273,9 @@ def render_markdown_to_discord(text: str) -> str:
                     cells = [r[c].ljust(_w[c]) for c in range(_c)]
                     return "| " + " | ".join(cells) + " |"
 
-                def fmt_sep(_w: list[int] = widths, _c: int = col_count) -> str:
+                def fmt_sep(
+                    _w: list[int] = widths, _c: int = col_count
+                ) -> str:
                     cells = ["-" * _w[c] for c in range(_c)]
                     return "| " + " | ".join(cells) + " |"
 

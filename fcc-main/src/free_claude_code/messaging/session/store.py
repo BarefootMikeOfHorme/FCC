@@ -1,5 +1,7 @@
 """Persistent messaging conversation state store."""
 
+from __future__ import annotations
+
 import threading
 from copy import deepcopy
 

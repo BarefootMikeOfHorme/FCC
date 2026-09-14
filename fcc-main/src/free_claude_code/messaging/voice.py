@@ -287,13 +287,13 @@ class PendingVoiceRegistry:
             return None
         task.cancel()
         return await PendingVoiceRegistry._drain((task,))
-
     @staticmethod
     async def _drain(
         tasks: tuple[asyncio.Task[None], ...],
     ) -> asyncio.CancelledError | None:
         if not tasks:
             return None
+
         drain_task = asyncio.create_task(
             PendingVoiceRegistry._consume_results(tasks),
             name="voice-handoff-drain",
@@ -304,19 +304,23 @@ class PendingVoiceRegistry:
     @staticmethod
     async def _consume_results(tasks: tuple[asyncio.Task[None], ...]) -> None:
         fatal_error: BaseException | None = None
+
         for task in tasks:
             try:
                 await task
-            except asyncio.CancelledError, Exception:
+            except (asyncio.CancelledError, Exception):
                 continue
             except BaseException as error:
                 fatal_error = fatal_error or error
+
         if fatal_error is not None:
             raise fatal_error
 
     @staticmethod
     def _is_fatal(error: BaseException) -> bool:
         return not isinstance(error, (asyncio.CancelledError, Exception))
+
+
 
     @staticmethod
     def _cancellation_result(

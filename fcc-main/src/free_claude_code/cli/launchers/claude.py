@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 # ============================================================
-# FCC Patch 2 — Early Logging Initialization for Claude Launcher
+# FCC Claude Launcher — Repaired & Enhanced
 # ============================================================
 
-from free_claude_code.config.logging_config import ensure_logging_initialized_early
-ensure_logging_initialized_early()
-
 from typing import Any
-from loguru import logger
-from free_claude_code.config.settings import Settings
-from free_claude_code.runtime.bootstrap import build_asgi_app
-from free_claude_code.runtime.provider_manager import ProviderRuntimeManager
 import asyncio
 import subprocess
 import shutil
-import sys
 
+from loguru import logger
+
+from free_claude_code.config.logging_config import ensure_logging_initialized_early
+from free_claude_code.config.settings import Settings
+from free_claude_code.runtime.bootstrap import build_asgi_app
+from free_claude_code.runtime.provider_manager import ProviderRuntimeManager
+
+# Initialize logging as early as possible
+ensure_logging_initialized_early()
 
 # ------------------------------------------------------------
 # Windows Terminal + WSL selection logic
@@ -28,31 +29,55 @@ WSL_DISTROS = {
     "3": "Athena",        # Hardened environment
 }
 
+# Default working directory for Claude inside WSL
+# Adjust if your FCC root moves.
+CLAUDE_WORKDIR = "/mnt/c/Users/Administrator/Desktop/fcc/fcc-main"
+
+# Pane mode: "V" = vertical, "H" = horizontal, None = new-tab
+DEFAULT_PANE_MODE = "V"
+
+
 def _wt_available() -> bool:
     """Check if Windows Terminal is available."""
     return shutil.which("wt.exe") is not None
 
 
-def _spawn_wsl_tab(distro: str):
+def _spawn_wsl_pane(distro: str, pane_mode: str | None = DEFAULT_PANE_MODE) -> bool:
     """
-    Spawn Claude inside a dedicated WSL tab.
-    Claude MUST NOT attach to FCC-server's tab cluster.
+    Spawn Claude inside a dedicated Windows Terminal pane running WSL.
+    - One pane per Claude instance (thinker).
+    - Claude runs in WSL, in CLAUDE_WORKDIR, via `fcc-claude`.
     """
     if not _wt_available():
         print("[FCC] Windows Terminal not available — running Claude in current shell.")
         return False
 
+    # Build WT command: split-pane or new-tab
+    wt_cmd: list[str] = ["wt.exe", "-w", "0"]
+
+    if pane_mode in ("V", "H"):
+        # Split pane vertically or horizontally
+        wt_cmd += ["split-pane", f"-{pane_mode}"]
+    else:
+        # Fallback: new tab
+        wt_cmd += ["new-tab"]
+
+    wt_cmd += [
+        "--title", f"Claude ({distro})",
+        "--",  # Separator before the actual command
+        "wsl.exe", "-d", distro,
+        "bash", "-lc",
+        f"cd {CLAUDE_WORKDIR} && fcc-claude"
+    ]
+
     try:
-        subprocess.Popen([
-            "wt.exe",
-            "--window", "0",
-            "--title", f"Claude ({distro})",
-            "--command", f"wsl.exe -d {distro} fcc-claude"
-        ])
-        print(f"[FCC] Claude WSL tab launched ({distro})")
+        subprocess.Popen(wt_cmd)
+        print(f"[FCC] Claude WSL pane launched ({distro}) via Windows Terminal.")
+        logger.debug("Claude launcher: WT command = %r", wt_cmd)
         return True
     except Exception as exc:
-        print(f"[FCC] Claude WSL tab failed safely: {exc}")
+        print(f"[FCC] Claude WSL pane failed safely: {exc}")
+        logger.warning("Claude launcher: WT pane spawn failed: %s", exc)
         return False
 
 
@@ -67,11 +92,14 @@ def _resolve_setting(obj: Any, name: str, default: Any) -> Any:
 
 async def _warm_runtime(settings: Settings) -> None:
     """
-    Patch 3: initialize ProviderRuntimeManager and warm model cache.
+    Initialize ProviderRuntimeManager and warm model cache.
     Claude does NOT start a server; warmup is optional but helpful.
     """
     manager = ProviderRuntimeManager(settings)
-    logger.info("Claude runtime: ProviderRuntimeManager initialized (generation_id=%s)", manager.current_generation_id)
+    logger.info(
+        "Claude runtime: ProviderRuntimeManager initialized (generation_id=%s)",
+        manager.current_generation_id,
+    )
 
     try:
         result = await manager.warm_referenced_model_cache()
@@ -96,7 +124,7 @@ def launch() -> None:
     logger.debug("Claude launcher: constructing Settings and building ASGI client app.")
 
     # --------------------------------------------------------
-    # WSL distro selection menu (Debian removed)
+    # WSL distro selection menu
     # --------------------------------------------------------
     print("\n[FCC] Select Linux environment for Claude:")
     print("  1) Ubuntu (default, stable)")
@@ -109,14 +137,14 @@ def launch() -> None:
     print(f"[FCC] Selected Linux environment: {distro}")
 
     # --------------------------------------------------------
-    # Spawn Claude in WSL tab (preferred)
+    # Spawn Claude in WSL pane (preferred)
     # --------------------------------------------------------
-    if _spawn_wsl_tab(distro):
-        print("[FCC] Claude launched in WSL tab. This shell will exit.")
+    if _spawn_wsl_pane(distro, pane_mode=DEFAULT_PANE_MODE):
+        print("[FCC] Claude launched in dedicated WSL pane. This shell will exit.")
         return
 
     # --------------------------------------------------------
-    # Fallback: run Claude in current shell
+    # Fallback: run Claude in current shell as client
     # --------------------------------------------------------
     settings = Settings()
 
@@ -126,8 +154,11 @@ def launch() -> None:
     # Optional: warm provider runtime for Claude-side tools
     asyncio.run(_warm_runtime(settings))
 
-    logger.info("Claude client runtime initialized. Connect to FCC-server at %s:%s",
-                settings.host, settings.port)
+    logger.info(
+        "Claude client runtime initialized. Connect to FCC-server at %s:%s",
+        settings.host,
+        settings.port,
+    )
 
     print("[FCC] Claude runtime ready. Use fcc-server to start the main server.")
     print("[FCC] Claude client connected to FCC-server for inference, agents, and providers.")

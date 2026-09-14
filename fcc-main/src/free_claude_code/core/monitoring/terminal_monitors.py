@@ -10,30 +10,63 @@ Handles launching external terminal-based monitors:
 Non-blocking, best-effort, and never critical to core/L1.
 """
 
-import subprocess
-import shutil
+import os
 import platform
-from typing import Dict, Optional
+import shutil
+import subprocess
+
 from loguru import logger
+
+
+def _working_monitor_executable(name: str) -> str | None:
+    """Return a monitor executable only when its launcher can actually start.
+
+    Windows entry-point executables embed the Python interpreter path used when
+    they were installed. ``shutil.which`` alone therefore accepts stale shims
+    (for example, one left behind after a Python version upgrade).
+    """
+    path = shutil.which(name)
+    if path is None:
+        return None
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=3,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        logger.warning("Monitor launcher is unusable: monitor={} path={}", name, path)
+        return None
+    if result.returncode != 0:
+        logger.warning(
+            "Monitor launcher exited unsuccessfully: monitor={} path={}", name, path
+        )
+        return None
+    return path
+
 
 # ============================================================
 # ORIGINAL CLASS (kept exactly as-is)
 # ============================================================
 
+
 class TerminalMonitorManager:
     def __init__(self) -> None:
         # Detect external terminal tools
-        self.available: Dict[str, str] = {
-            "btop": shutil.which("btop"),
-            "glances": shutil.which("glances"),
-            "htop": shutil.which("htop"),
-
+        self.available: dict[str, str] = {
+            "btop": _working_monitor_executable("btop"),
+            "glances": _working_monitor_executable("glances"),
+            "htop": _working_monitor_executable("htop"),
             # bottom is NOT a system binary, so we mark it as "internal"
             # and handle it separately in launch()
-            "bottom": "internal"
+            "bottom": "internal",
         }
 
-    def status(self) -> Dict[str, str]:
+    def status(self) -> dict[str, str]:
         """Return availability of terminal monitors."""
         return dict(self.available)
 
@@ -46,6 +79,7 @@ class TerminalMonitorManager:
             try:
                 # LOCAL IMPORT — breaks circular import
                 from .bottom_launcher import launch_bottom
+
                 return launch_bottom()
             except Exception as e:
                 return f"Failed to launch bottom monitor: {e}"
@@ -65,6 +99,7 @@ class TerminalMonitorManager:
 # ENHANCED CLASS — OPTIONAL, NON-BREAKING, ADDITIVE
 # ============================================================
 
+
 class EnhancedTerminalMonitorManager(TerminalMonitorManager):
     """
     Enhanced version of TerminalMonitorManager.
@@ -79,12 +114,14 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
     - safe-mode error handling
     """
 
-    def __init__(self, instance_id: Optional[str] = None) -> None:
+    def __init__(self, instance_id: str | None = None) -> None:
         super().__init__()
         self.instance_id = instance_id or "default"
-        logger.info(f"[Monitor] EnhancedTerminalMonitorManager initialized (instance={self.instance_id})")
+        logger.info(
+            f"[Monitor] EnhancedTerminalMonitorManager initialized (instance={self.instance_id})"
+        )
 
-    def _launch_external(self, name: str, path: str) -> Dict[str, str]:
+    def _launch_external(self, name: str, path: str) -> dict[str, str]:
         """Launch external binary monitors with Windows terminal support."""
         try:
             if platform.system().lower() == "windows":
@@ -109,7 +146,7 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
                 "instance": self.instance_id,
             }
 
-    def launch(self, name: str) -> Dict[str, str]:
+    def launch(self, name: str) -> dict[str, str]:
         """Launch a terminal monitor with structured output."""
         if name not in self.available:
             return {"monitor": name, "status": "unknown", "instance": self.instance_id}
@@ -118,6 +155,7 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
             try:
                 # LOCAL IMPORT — breaks circular import
                 from .bottom_launcher import launch_bottom
+
                 launch_bottom()
                 logger.info(f"[Monitor] Launched bottom (instance={self.instance_id})")
                 return {
@@ -137,7 +175,9 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
 
         path = self.available[name]
         if not path:
-            logger.warning(f"[Monitor] {name} not installed (instance={self.instance_id})")
+            logger.warning(
+                f"[Monitor] {name} not installed (instance={self.instance_id})"
+            )
             return {
                 "monitor": name,
                 "status": "missing",
@@ -146,10 +186,26 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
 
         return self._launch_external(name, path)
 
-    def launch_all(self) -> Dict[str, Dict[str, str]]:
-        """Launch all available monitors."""
+    def launch_all(self) -> dict[str, dict[str, str]]:
+        """Launch every known terminal monitor."""
         results = {}
-        for name, path in self.available.items():
+        for name in self.available:
+            results[name] = self.launch(name)
+        return results
+
+    def launch_defaults(self) -> dict[str, dict[str, str]]:
+        """Launch btop plus explicitly requested additional terminal monitors.
+
+        ``FCC_ADDITIONAL_TERMINAL_MONITORS`` accepts a comma-separated list of
+        monitor names, such as ``glances,bottom``.  This keeps btop as the
+        stable default while preserving an extensible monitor cluster.
+        """
+        configured = os.getenv("FCC_ADDITIONAL_TERMINAL_MONITORS", "")
+        names = ["btop"]
+        names.extend(name.strip().lower() for name in configured.split(",") if name.strip())
+
+        results = {}
+        for name in dict.fromkeys(names):
             results[name] = self.launch(name)
         return results
 
@@ -158,10 +214,11 @@ class EnhancedTerminalMonitorManager(TerminalMonitorManager):
 # FCC-SERVER EXPECTED ENTRYPOINT (UPSTREAM COMPATIBLE)
 # ============================================================
 
+
 def start_monitoring():
     """
     FCC-server expects this function name.
     We route it to the enhanced monitoring cluster.
     """
     manager = EnhancedTerminalMonitorManager(instance_id="fcc-server")
-    manager.launch_all()
+    manager.launch_defaults()

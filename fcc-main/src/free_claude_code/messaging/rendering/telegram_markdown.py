@@ -4,6 +4,8 @@ Renders common Markdown into Telegram MarkdownV2 format.
 Used by the message handler and Telegram platform adapter.
 """
 
+from __future__ import annotations
+
 from markdown_it import MarkdownIt
 
 from .markdown_tables import normalize_gfm_tables
@@ -128,10 +130,7 @@ def render_markdown_to_mdv2(text: str) -> str:
                             if key == "src":
                                 href = val
                                 break
-                # MarkdownV2 has no image entity, so an image degrades to plain
-                # text. Escape it as text: escape_md_v2_link_url only covers the
-                # link-destination set and would leave '(', ')', '.', '_' bare,
-                # which Telegram rejects with "can't parse entities".
+                # MarkdownV2 has no image entity; degrade to escaped text.
                 if alt:
                     out.append(escape_md_v2(f"{alt} ({href})"))
                 else:
@@ -157,6 +156,7 @@ def render_markdown_to_mdv2(text: str) -> str:
     while i < len(tokens):
         tok = tokens[i]
         t = tok.type
+
         if t == "paragraph_open":
             pass
         elif t == "paragraph_close":
@@ -180,14 +180,14 @@ def render_markdown_to_mdv2(text: str) -> str:
                     if val is not None:
                         try:
                             start = int(val)
-                        except TypeError, ValueError:
+                        except (TypeError, ValueError):
                             start = 1
                 else:
                     for key, val in tok.attrs:
                         if key == "start":
                             try:
                                 start = int(val)
-                            except TypeError, ValueError:
+                            except (TypeError, ValueError):
                                 start = 1
                             break
             list_stack.append({"type": "ordered", "index": start})
@@ -278,7 +278,9 @@ def render_markdown_to_mdv2(text: str) -> str:
                     cells = [r[c].ljust(_w[c]) for c in range(_c)]
                     return "| " + " | ".join(cells) + " |"
 
-                def fmt_sep(_w: list[int] = widths, _c: int = col_count) -> str:
+                def fmt_sep(
+                    _w: list[int] = widths, _c: int = col_count
+                ) -> str:
                     cells = ["-" * _w[c] for c in range(_c)]
                     return "| " + " | ".join(cells) + " |"
 
