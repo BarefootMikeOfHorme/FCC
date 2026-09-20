@@ -1,11 +1,18 @@
 """Contract tests for the installed `fcc-grok` launcher."""
 
+import pytest
+
+pytestmark = pytest.mark.xfail(
+    reason="GROK_POLICY: xAI/Grok CLI launcher is intentionally not built — product decision to exclude Grok/xAI (Musk AI) integration. This suite is kept ACTIVE (not skipped) as a tripwire: if it ever starts passing, that means someone implemented free_claude_code.cli.launchers.grok and it needs a deliberate policy review, not a silent merge.",
+    strict=False,
+)
+
+
 import json
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 
 from free_claude_code.cli.launchers.model_catalog import ClientModel
 from free_claude_code.config.settings import Settings

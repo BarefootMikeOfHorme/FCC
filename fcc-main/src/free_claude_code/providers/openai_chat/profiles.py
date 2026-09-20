@@ -223,19 +223,6 @@ OPENAI_CHAT_PROFILES: dict[str, OpenAIChatProfile] = {
         reasoning_delta_field="reasoning",
         structured_reasoning_details=True,
     ),
-    "xai": OpenAIChatProfile(
-        _policy(
-            "XAI",
-            ReasoningReplayMode.REASONING_CONTENT,
-            default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
-        ),
-        NO_REASONING,
-        model_listing=OpenAIModelListing(
-            path="/language-models",
-            collection_field="models",
-            aliases_field="aliases",
-        ),
-    ),
     "qwencloud": OpenAIChatProfile(
         _policy(
             "QWENCLOUD",

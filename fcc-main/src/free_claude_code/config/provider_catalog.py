@@ -53,8 +53,8 @@ SAMBANOVA_DEFAULT_BASE = "https://api.sambanova.ai/v1"
 # Kilo.ai gateway OpenAI-compatible Chat Completions API.
 KILO_DEFAULT_BASE = "https://api.kilo.ai/api/gateway"
 OPENAI_CODEX_DEFAULT_BASE = "https://chatgpt.com/backend-api/codex"
-# xAI OpenAI-compatible Chat Completions API.
-XAI_DEFAULT_BASE = "https://api.x.ai/v1"
+# NOTE: XAI_DEFAULT_BASE intentionally removed — Grok/xAI is excluded by
+# policy decision (see repo notes), not an oversight.
 # QwenCloud Token Plan OpenAI-compatible Chat Completions API.
 QWENCLOUD_DEFAULT_BASE = (
     "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
@@ -168,15 +168,9 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
         default_base_url=OPENAI_CODEX_DEFAULT_BASE,
         proxy_attr="openai_proxy",
     ),
-    "xai": ProviderDescriptor(
-        provider_id="xai",
-        display_name="xAI (Grok)",
-        credential_env="XAI_API_KEY",
-        credential_url="https://console.x.ai/team/default/api-keys",
-        credential_attr="xai_api_key",
-        default_base_url=XAI_DEFAULT_BASE,
-        proxy_attr="xai_proxy",
-    ),
+    # NOTE: xAI/Grok is intentionally not offered as a provider (policy
+    # decision — see repo notes). If this entry reappears, that needs a
+    # deliberate review, not a silent re-add.
     "qwencloud": ProviderDescriptor(
         provider_id="qwencloud",
         display_name="QwenCloud Token Plan",

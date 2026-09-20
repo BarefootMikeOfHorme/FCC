@@ -36,7 +36,6 @@ from free_claude_code.config.provider_catalog import (
     TOKENROUTER_DEFAULT_BASE,
     VERCEL_AI_GATEWAY_DEFAULT_BASE,
     WANDB_INFERENCE_DEFAULT_BASE,
-    XAI_DEFAULT_BASE,
     ZAI_API_DEFAULT_BASE,
     ZAI_CODING_DEFAULT_BASE,
     ZENMUX_DEFAULT_BASE,
@@ -77,7 +76,6 @@ def _make_settings(**overrides):
     mock.azure_openai_base_url = "https://test-resource.openai.azure.com/openai/v1/"
     mock.nvidia_nim_api_key = "test_key"
     mock.open_router_api_key = "test_openrouter_key"
-    mock.xai_api_key = "test_xai_key"
     mock.qwencloud_api_key = "test_qwencloud_key"
     mock.qwencloud_coding_api_key = "test_qwencloud_coding_key"
     mock.together_api_key = "test_together_key"
@@ -162,7 +160,6 @@ def _make_settings(**overrides):
     mock.kilo_api_key = "test_kilo_key"
     mock.kilo_proxy = None
     mock.openai_proxy = None
-    mock.xai_proxy = None
     mock.qwencloud_proxy = None
     mock.qwencloud_coding_proxy = None
     mock.together_proxy = None
@@ -284,25 +281,6 @@ def test_llm7_provider_config_uses_key_base_and_proxy() -> None:
     assert descriptor.proxy_attr == "llm7_proxy"
     assert config.api_key == "llm7-token"
     assert config.base_url == LLM7_DEFAULT_BASE
-    assert config.proxy == "http://proxy.test:8080"
-    assert isinstance(provider, OpenAIChatProvider)
-
-
-def test_xai_provider_config_uses_key_base_and_proxy() -> None:
-    descriptor = PROVIDER_CATALOG["xai"]
-    settings = _make_settings(
-        xai_api_key="xai-token",
-        xai_proxy="http://proxy.test:8080",
-    )
-
-    config = build_provider_config(descriptor, settings)
-    with patch("free_claude_code.providers.openai_chat.provider.AsyncOpenAI"):
-        provider = create_provider("xai", settings)
-
-    assert descriptor.display_name == "xAI (Grok)"
-    assert descriptor.credential_env == "XAI_API_KEY"
-    assert config.api_key == "xai-token"
-    assert config.base_url == XAI_DEFAULT_BASE
     assert config.proxy == "http://proxy.test:8080"
     assert isinstance(provider, OpenAIChatProvider)
 
@@ -874,7 +852,6 @@ def test_create_provider_instantiates_each_builtin():
         "nvidia_nim": NvidiaNimProvider,
         "openai": OpenAICodexProvider,
         "cline_pass": OpenAIChatProvider,
-        "xai": OpenAIChatProvider,
         "qwencloud": OpenAIChatProvider,
         "qwencloud_coding": OpenAIChatProvider,
         "together": OpenAIChatProvider,

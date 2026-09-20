@@ -46,7 +46,8 @@ FCC_PROVIDER_FOLDERS = {
     "mistral",
     "groq",
     "cohere",
-    "xai",
+    # NOTE: "xai" intentionally removed — Grok/xAI is excluded by policy
+    # decision (see repo notes), not an oversight.
     "llm7",
     "google",
 }

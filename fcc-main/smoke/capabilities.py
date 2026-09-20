@@ -601,20 +601,6 @@ CAPABILITY_CONTRACTS: tuple[CapabilityContract, ...] = (
     ),
     CapabilityContract(
         "cli",
-        "grok_cli_integration",
-        "grok_cli_integration",
-        "free_claude_code.cli.launchers.grok",
-        "Grok Build 1.0.5+, live FCC Responses catalog, and child-only config",
-        "Responses route scoped to FCC for attached TUI, headless, and ACP sessions",
-        "version, route conflict, proxy, or catalog failure exits before inference",
-        (
-            "tests/cli/test_grok_launcher.py",
-            "tests/cli/test_model_catalog.py",
-        ),
-        ("test_grok_cli_headless_e2e",),
-    ),
-    CapabilityContract(
-        "cli",
         "muse_cli_integration",
         "muse_cli_integration",
         "free_claude_code.cli.launchers.muse",

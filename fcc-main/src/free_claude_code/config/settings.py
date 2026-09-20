@@ -247,11 +247,6 @@ class Settings(BaseModel):
         default=None, validation_alias="CLINE_API_KEY"
     )
 
-    # ==================== xAI / Grok (OpenAI-compatible) ====================
-    xai_api_key: OptionalNonEmptyString = Field(
-        default=None, validation_alias="XAI_API_KEY"
-    )
-
     # ==================== QwenCloud Token Plan (OpenAI-compatible) ====================
     qwencloud_api_key: OptionalNonEmptyString = Field(
         default=None, validation_alias="QWENCLOUD_API_KEY"
@@ -384,9 +379,8 @@ class Settings(BaseModel):
     openai_proxy: OptionalNonEmptyString = Field(
         default=None, validation_alias="OPENAI_PROXY"
     )
-    xai_proxy: OptionalNonEmptyString = Field(
-        default=None, validation_alias="XAI_PROXY"
-    )
+    # NOTE: xai_proxy intentionally removed alongside the xAI/Grok provider
+    # (policy decision — see repo notes).
     qwencloud_proxy: OptionalNonEmptyString = Field(
         default=None, validation_alias="QWENCLOUD_PROXY"
     )

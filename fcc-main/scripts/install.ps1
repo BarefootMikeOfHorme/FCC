@@ -25,7 +25,7 @@ $OpenCodeReleaseBaseUrl = "https://github.com/anomalyco/opencode/releases/latest
 $HermesInstallUrl = "https://hermes-agent.nousresearch.com/install.ps1"
 $DshVersion = "0.1.0-rc.8"
 $DshPackage = "@deepseek-ai/dsh@$DshVersion"
-$GrokInstallUrl = "https://x.ai/cli/install.ps1"
+# NOTE: Grok/xAI intentionally excluded from FCC — policy decision, not an oversight.
 $RtkVersion = "0.44.2"
 $RtkReleaseBaseUrl = "https://github.com/rtk-ai/rtk/releases/download/v$RtkVersion"
 $RtkWindowsAssetName = "rtk-x86_64-pc-windows-msvc.zip"
@@ -38,7 +38,6 @@ $script:InstallOpenCode = $true
 $script:InstallCline = $false
 $script:InstallHermes = $true
 $script:InstallDsh = $true
-$script:InstallGrok = $true
 $script:InstallMuse = $true
 $script:PiAvailable = $false
 $script:MuseAvailable = $false
@@ -54,7 +53,6 @@ $FccCommands = @(
     "fcc-cline",
     "fcc-hermes",
     "fcc-dsh",
-    "fcc-grok",
     "fcc-muse",
     "fcc-init",
     "free-claude-code"
@@ -125,14 +123,11 @@ function Select-CodingAgents {
         $script:InstallDsh = Read-YesNo `
             -Prompt "Install or verify DeepSeek Harness for fcc-dsh?" `
             -DefaultYes $script:InstallDsh
-        $script:InstallGrok = Read-YesNo `
-            -Prompt "Install or verify Grok Build for fcc-grok?" `
-            -DefaultYes $script:InstallGrok
         $script:InstallMuse = Read-YesNo `
             -Prompt "Install or verify Muse Code for fcc-muse?" `
             -DefaultYes $script:InstallMuse
 
-        if ($script:InstallClaudeCode -or $script:InstallCodex -or $script:InstallPi -or $script:InstallOpenCode -or $script:InstallCline -or $script:InstallHermes -or $script:InstallDsh -or $script:InstallGrok -or $script:InstallMuse) {
+        if ($script:InstallClaudeCode -or $script:InstallCodex -or $script:InstallPi -or $script:InstallOpenCode -or $script:InstallCline -or $script:InstallHermes -or $script:InstallDsh -or $script:InstallMuse) {
             break
         }
         Write-Host "Select at least one coding agent."
@@ -276,12 +271,6 @@ function Add-KnownBinDirectories {
     }
     if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
         Add-PathEntry (Join-Path $env:APPDATA "npm")
-    }
-    if ($env:GROK_BIN_DIR) {
-        Add-PathEntry $env:GROK_BIN_DIR
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-        Add-PathEntry (Join-Path $env:USERPROFILE ".grok\bin")
     }
 }
 
@@ -808,23 +797,6 @@ function Ensure-Hermes {
     Confirm-Application -CommandName "hermes" -DisplayName "Hermes Agent"
 }
 
-function Install-Grok {
-    Invoke-DownloadedPowerShellInstaller -Url $GrokInstallUrl -Name "Grok Build"
-    Add-KnownBinDirectories
-}
-
-function Ensure-Grok {
-    $command = Get-ApplicationCommand "grok"
-    if ($command) {
-        Write-Host "Grok Build already found on PATH; verifying it."
-    }
-    else {
-        Install-Grok
-    }
-
-    Confirm-Application -CommandName "grok" -DisplayName "Grok Build"
-}
-
 function Ensure-Muse {
     $script:MuseAvailable = $false
     $command = Get-ApplicationCommand "muse"
@@ -1000,17 +972,13 @@ function Ensure-SelectedCodingAgents {
         Ensure-Dsh
     }
 
-    if ($script:InstallGrok) {
-        Write-Step "Ensuring Grok Build is installed"
-        Ensure-Grok
-    }
 
     if ($script:InstallMuse) {
         Write-Step "Checking for Muse Code"
         Ensure-Muse
     }
 
-    if ((-not $script:InstallClaudeCode) -and (-not $script:InstallCodex) -and (-not $script:PiAvailable) -and (-not $script:InstallOpenCode) -and (-not $script:InstallCline) -and (-not $script:InstallHermes) -and (-not $script:InstallDsh) -and (-not $script:InstallGrok) -and (-not $script:MuseAvailable)) {
+    if ((-not $script:InstallClaudeCode) -and (-not $script:InstallCodex) -and (-not $script:PiAvailable) -and (-not $script:InstallOpenCode) -and (-not $script:InstallCline) -and (-not $script:InstallHermes) -and (-not $script:InstallDsh) -and (-not $script:MuseAvailable)) {
         throw "No selected coding agent was installed. Re-run the installer and choose at least one."
     }
 }
@@ -1165,7 +1133,7 @@ function Configure-AndConfirmFreeClaudeCode {
     if ($DryRun) {
         Write-Host "+ uv tool update-shell"
         Write-Host "+ uv tool dir --bin"
-        Write-Host "+ verify fcc-desktop, fcc-server, fcc-claude, fcc-codex, fcc-pi, fcc-opencode, fcc-cline, fcc-hermes, fcc-dsh, fcc-grok, and fcc-muse in the uv tool bin directory"
+        Write-Host "+ verify fcc-desktop, fcc-server, fcc-claude, fcc-codex, fcc-pi, fcc-opencode, fcc-cline, fcc-hermes, fcc-dsh, and fcc-muse in the uv tool bin directory"
         Write-Host "+ fcc-server --version"
         Export-FccDesktopIcon `
             -DesktopCommand "<uv-tool-bin>\fcc-desktop.exe" `
@@ -1192,7 +1160,7 @@ function Configure-AndConfirmFreeClaudeCode {
         [IO.Path]::AltDirectorySeparatorChar
     )
     $installedCommands = @{}
-    foreach ($commandName in @("fcc-desktop", "fcc-server", "fcc-claude", "fcc-codex", "fcc-pi", "fcc-opencode", "fcc-cline", "fcc-hermes", "fcc-dsh", "fcc-grok", "fcc-muse")) {
+    foreach ($commandName in @("fcc-desktop", "fcc-server", "fcc-claude", "fcc-codex", "fcc-pi", "fcc-opencode", "fcc-cline", "fcc-hermes", "fcc-dsh", "fcc-muse")) {
         $command = Get-ApplicationCommand $commandName
         if (-not $command) {
             throw "Free Claude Code installation did not create '$commandName'."
@@ -1362,12 +1330,6 @@ else {
     }
     else {
         Write-Host "The fcc-dsh wrapper is ready after you install DeepSeek Harness $DshVersion."
-    }
-    if ($script:InstallGrok) {
-        Write-Host "Run Grok Build with: fcc-grok"
-    }
-    else {
-        Write-Host "The fcc-grok wrapper is ready after you install Grok Build."
     }
     if ($script:MuseAvailable) {
         Write-Host "Run Muse Code with: fcc-muse"

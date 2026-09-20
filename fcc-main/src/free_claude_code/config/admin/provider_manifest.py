@@ -161,13 +161,6 @@ _PROVIDER_FIELD_OVERRIDES: dict[str, ProviderFieldOverride] = {
             "managed account token."
         ),
     },
-    "XAI_API_KEY": {
-        "label": "xAI API Key",
-        "description": (
-            "xAI OpenAI-compatible API key for Grok chat and image-understanding "
-            "models."
-        ),
-    },
     "QWENCLOUD_API_KEY": {
         "label": "QwenCloud Token Plan API Key",
         "description": (

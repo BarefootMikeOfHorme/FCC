@@ -54,7 +54,6 @@ def _settings(**overrides):
         "vertex_location": "global",
         "groq_api_key": "",
         "cline_api_key": "",
-        "xai_api_key": "",
         "qwencloud_api_key": "",
         "qwencloud_coding_api_key": "",
         "together_api_key": "",
@@ -229,22 +228,6 @@ def test_llm7_is_not_enabled_without_explicit_credential(monkeypatch) -> None:
     assert not config.has_provider_configuration("llm7")
     assert config.provider_smoke_models() == []
 
-
-def test_xai_provider_smoke_uses_current_grok_model(monkeypatch) -> None:
-    monkeypatch.delenv("FCC_SMOKE_MODEL_XAI", raising=False)
-    config = _smoke_config(
-        settings=_settings(
-            model="ollama/llama3.1",
-            ollama_base_url="",
-            xai_api_key="xai-key",
-        )
-    )
-
-    models = config.provider_smoke_models()
-
-    assert [model.provider for model in models] == ["xai"]
-    assert models[0].full_model == "xai/grok-4.5"
-    assert models[0].source == "provider_default"
 
 
 def test_cline_pass_provider_smoke_uses_low_cost_subscription_model(
