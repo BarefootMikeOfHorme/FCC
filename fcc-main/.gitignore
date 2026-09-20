@@ -18,3 +18,5 @@ llama_cache
 .vscode
 
 hub/
+
+_grok_sync_backup_*/
