@@ -12,7 +12,7 @@ and how contributors should extend it.
 
 Free Claude Code is a local proxy for agent clients. It accepts Anthropic
 Messages traffic from Claude Code and Pi clients and OpenAI Responses traffic
-from Codex, OpenCode, Cline, Hermes, DeepSeek Harness, Grok Build, and Muse Code
+from Codex, OpenCode, Cline, Hermes, DeepSeek Harness, and Muse Code
 clients, routes the request to a configured upstream provider, and preserves
 the wire protocol expected by the caller.
 
@@ -21,7 +21,7 @@ There are three runtime surfaces:
 - HTTP proxy: FastAPI routes expose Anthropic-compatible, Responses-compatible,
   health, model-listing, stop, and admin endpoints.
 - CLI launchers: wrapper entrypoints prepare Claude Code, Codex, Pi, OpenCode,
-  Cline, Hermes, DeepSeek Harness, Grok Build, and Muse Code sessions so they
+  Cline, Hermes, DeepSeek Harness, and Muse Code sessions so they
   target the local proxy.
 - Messaging bridge: optional Discord or Telegram adapters turn chat messages
   into managed client CLI sessions.
@@ -35,7 +35,6 @@ flowchart LR
     Cline[Cline CLI] --> ProxyAPI
     Hermes[Hermes Agent] --> ProxyAPI
     DSH[DeepSeek Harness] --> ProxyAPI
-    Grok[Grok Build] --> ProxyAPI
     Muse[Muse Code] --> ProxyAPI
     AdminUI[Local Admin UI] --> ProxyAPI
     Bots[Discord or Telegram Bots] --> Messaging[Messaging Bridge]
@@ -190,9 +189,6 @@ for real prompts against supported providers:
 - `fcc-dsh`, DeepSeek Harness 0.1.0-rc.8, and the OpenAI Responses behavior it
   relies on for attached Web and headless sessions, including an FCC-scoped
   model catalog and process-local configuration.
-- `fcc-grok`, Grok Build 1.0.5 or newer, and the OpenAI Responses behavior it
-  relies on for attached terminal, headless, and ACP sessions, including an
-  FCC-scoped model catalog and process-local configuration.
 - `fcc-muse`, Muse Code 0.2.1 or newer, and the OpenAI Responses behavior it
   relies on for attached TUI, exec, and resume sessions, including an
   FCC-scoped model catalog and process-local routing.
@@ -258,7 +254,6 @@ Console scripts are registered in [pyproject.toml](pyproject.toml):
 - `fcc-cline` calls `free_claude_code.cli.launchers.cline:launch`.
 - `fcc-hermes` calls `free_claude_code.cli.launchers.hermes:launch`.
 - `fcc-dsh` calls `free_claude_code.cli.launchers.dsh:launch`.
-- `fcc-grok` calls `free_claude_code.cli.launchers.grok:launch`.
 - `fcc-muse` calls `free_claude_code.cli.launchers.muse:launch`.
 
 [scripts/install.sh](scripts/install.sh) and [scripts/install.ps1](scripts/install.ps1)
@@ -268,8 +263,8 @@ per-user application bundle and desktop link. [scripts/uninstall.sh](scripts/uni
 and [scripts/uninstall.ps1](scripts/uninstall.ps1) remove those exact desktop
 artifacts, the FCC uv tool, and the managed `~/.fcc/` tree from
 [config/paths.py](src/free_claude_code/config/paths.py); they do not remove
-uv, Claude Code, Codex, Pi, OpenCode, Cline, Hermes, DeepSeek Harness, Grok
-Build, Muse Code, or uv-managed Python runtimes. [scripts/ci.sh](scripts/ci.sh) and
+uv, Claude Code, Codex, Pi, OpenCode, Cline, Hermes, DeepSeek Harness,
+Muse Code, or uv-managed Python runtimes. [scripts/ci.sh](scripts/ci.sh) and
 [scripts/ci.ps1](scripts/ci.ps1) mirror [.github/workflows/tests.yml](.github/workflows/tests.yml)
 for local pre-push verification.
 
@@ -1371,7 +1366,7 @@ client environment.
 [cli/launchers/model_catalog.py](src/free_claude_code/cli/launchers/model_catalog.py)
 consumes the direct Responses view, validates its nested `provider/model`
 references, and is shared by Codex, OpenCode, Cline, Hermes, DeepSeek Harness,
-Grok Build, and Muse Code. The API owns compatibility filtering and direct wire
+and Muse Code. The API owns compatibility filtering and direct wire
 identity; each launcher owns only translation into its client's configuration
 format.
 
@@ -1491,23 +1486,10 @@ own the installed `fcc-dsh` launcher for DeepSeek Harness 0.1.0-rc.8:
   activity; `fcc-dsh` owns the configured model route, not a general plugin
   sandbox.
 
-[cli/launchers/grok.py](src/free_claude_code/cli/launchers/grok.py) owns the
-installed `fcc-grok` launcher for stable Grok Build 1.0.5 or newer:
-
-- Attached TUI, headless, and `agent stdio` sessions require a reachable FCC
-  server, a canonical proxy token, and a non-empty direct Responses catalog.
-  Model overrides are validated before Grok starts; preparation is fail-closed.
-- A child-only environment points Grok's native Responses backend and model
-  picker at FCC, sets client retries to zero through catalog metadata, and
-  derives its idle timeout from FCC's provider-progress boundary. Native Grok
-  configuration, credentials, sessions, plugins, skills, and telemetry remain
-  Grok-owned and are never rewritten.
-- The wrapper prevents native leader or endpoint overrides for attached
-  sessions. Detached modes pass through or fail explicitly according to their
-  lifecycle, rather than outliving FCC's process-only route.
-- Grok's built-in web search and fetch are disabled because they use a distinct
-  Responses-side service contract FCC does not implement. Ordinary `grok`
-  remains unchanged.
+NOTE: a Grok/xAI CLI launcher was speced here but intentionally never
+built and never will be — Grok/xAI is excluded by policy decision (see repo
+notes). This section previously documented its planned behavior in detail;
+removed so it doesn't read as an implemented feature.
 
 [cli/launchers/muse.py](src/free_claude_code/cli/launchers/muse.py) owns the
 installed `fcc-muse` launcher for Muse Code 0.2.1 or newer:
@@ -1556,7 +1538,7 @@ reports a count-only failure, and leaves failures available for the next cleanup
 attempt. Real-session registration is collision-safe and becomes durable tree
 state only after the manager accepts it.
 
-Codex, Pi, OpenCode, Cline, Hermes, DeepSeek Harness, Grok Build, and Muse Code
+Codex, Pi, OpenCode, Cline, Hermes, DeepSeek Harness, and Muse Code
 are supported through their installed launchers. FCC does not keep internal
 managed session runners for them because no user-facing messaging setting
 selects those clients for Discord or Telegram.

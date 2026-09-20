@@ -1,4 +1,14 @@
-"""Heuristic parser for text-emitted tool calls."""
+"""
+Unified tool parsing and registry module.
+
+This file contains:
+1. Shared constants and helpers
+2. FunctionTagToolParser — strict <tool_call> envelope parser
+3. HeuristicToolParser — raw-text parser for OpenAI-style tool calls
+4. TOOL_REGISTRY — central registry for FCC tool metadata
+"""
+
+from __future__ import annotations
 
 import json
 import re
@@ -14,221 +24,32 @@ from .models import MessagesRequest
 from .openai_tool_names import OpenAIToolNameCodec
 from .tool_schema import arguments_match_schema, coerce_text_argument
 
+
+# ============================================================
+# SECTION 1 — CONSTANTS & SHARED HELPERS
+# ============================================================
+
 _CONTROL_TOKEN_RE = re.compile(r"<\|[^|>]{1,80}\|>")
 _CONTROL_TOKEN_START = "<|"
 _CONTROL_TOKEN_END = "|>"
+
 _FUNCTION_TAG_BLOCK_START = "<tool_call>"
 _FUNCTION_TAG_BLOCK_END = "</tool_call>"
 _FUNCTION_TAG_START = "<function="
 _FUNCTION_TAG_END = "</function>"
 _PARAMETER_TAG_START = "<parameter="
 _PARAMETER_TAG_END = "</parameter>"
+
 _MAX_FUNCTION_TAG_CANDIDATE_CHARS = 4 * 1024 * 1024
 
 
-@dataclass(frozen=True, slots=True)
-class _RawFunctionTagCall:
-    name: str
-    arguments: dict[str, str]
-
-
-class _FunctionTagState(Enum):
-    SEARCHING = 1
-    CANDIDATE = 2
-    DISABLED = 3
-    FINISHED = 4
-
-
-class FunctionTagToolParser:
-    """Parse an exact terminal function-tag envelope into tool use."""
-
-    def __init__(self, request: MessagesRequest):
-        self._tool_names = OpenAIToolNameCodec.from_request(request)
-        self._schemas: dict[str, dict[str, Any]] = {}
-        for tool in request.tools or ():
-            if tool.name:
-                self._schemas[tool.name] = (
-                    tool.input_schema
-                    if tool.input_schema is not None
-                    else {"type": "object"}
-                )
-        tool_choice = request.tool_choice
-        tool_choice_type = (
-            tool_choice.get("type") if isinstance(tool_choice, dict) else None
-        )
-        self._state = (
-            _FunctionTagState.SEARCHING
-            if self._schemas and tool_choice_type != "none"
-            else _FunctionTagState.DISABLED
-        )
-        self._parts: list[str] = []
-        self._length = 0
-        self._marker_tail = ""
-
-    def feed(self, text: str) -> str:
-        """Hold a possible reserved response and return text safe to expose."""
-        if not text:
-            return ""
-        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
-            return text
-
-        if self._state is _FunctionTagState.CANDIDATE:
-            self._parts.append(text)
-            self._length += len(text)
-            if self._length > _MAX_FUNCTION_TAG_CANDIDATE_CHARS:
-                return self.disable()
-            return ""
-
-        candidate = "".join((self._marker_tail, text))
-        marker_index = candidate.find(_FUNCTION_TAG_BLOCK_START)
-        if marker_index >= 0:
-            visible = candidate[:marker_index]
-            control = candidate[marker_index:]
-            self._state = _FunctionTagState.CANDIDATE
-            self._marker_tail = ""
-            self._parts.append(control)
-            self._length = len(control)
-            if self._length > _MAX_FUNCTION_TAG_CANDIDATE_CHARS:
-                return "".join((visible, self.disable()))
-            return visible
-
-        held_length = _partial_function_tag_marker_suffix_length(candidate)
-        if held_length:
-            self._marker_tail = candidate[-held_length:]
-            return candidate[:-held_length]
-        self._marker_tail = ""
-        return candidate
-
-    def disable(self) -> str:
-        """Disable textual recovery and release any held candidate unchanged."""
-        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
-            return ""
-        self._state = _FunctionTagState.DISABLED
-        text = "".join((self._marker_tail, *self._parts))
-        self._marker_tail = ""
-        self._parts.clear()
-        self._length = 0
-        return text
-
-    def finish(self) -> tuple[str, tuple[dict[str, Any], ...]]:
-        """Finalize one response atomically as visible text or validated tools."""
-        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
-            return "", ()
-        if self._state is _FunctionTagState.SEARCHING:
-            self._state = _FunctionTagState.FINISHED
-            text = self._marker_tail
-            self._marker_tail = ""
-            return text, ()
-        self._state = _FunctionTagState.FINISHED
-        raw = "".join(self._parts)
-        self._parts.clear()
-        self._length = 0
-        try:
-            calls = _parse_function_tag_calls(raw)
-            tool_uses = self._validated_tool_uses(calls)
-        except ValueError:
-            return raw, ()
-        return "", tool_uses
-
-    def _validated_tool_uses(
-        self, calls: tuple[_RawFunctionTagCall, ...]
-    ) -> tuple[dict[str, Any], ...]:
-        tool_uses: list[dict[str, Any]] = []
-        for call in calls:
-            name = self._tool_names.decode(call.name)
-            schema = self._schemas.get(name)
-            if schema is None:
-                raise ValueError
-            properties = schema.get("properties")
-            property_schemas = properties if isinstance(properties, Mapping) else {}
-            additional = schema.get("additionalProperties")
-            arguments: dict[str, Any] = {}
-            for parameter_name, value in call.arguments.items():
-                parameter_schema = property_schemas.get(parameter_name)
-                if not isinstance(parameter_schema, Mapping):
-                    parameter_schema = (
-                        additional if isinstance(additional, Mapping) else {}
-                    )
-                arguments[parameter_name] = coerce_text_argument(
-                    value,
-                    parameter_schema,
-                )
-            if not arguments_match_schema(arguments, schema):
-                raise ValueError
-            tool_uses.append(
-                {
-                    "type": "tool_use",
-                    "id": f"toolu_function_tag_{uuid.uuid4().hex[:8]}",
-                    "name": name,
-                    "input": arguments,
-                }
-            )
-        return tuple(tool_uses)
-
-
-def _parse_function_tag_calls(text: str) -> tuple[_RawFunctionTagCall, ...]:
-    cursor = 0
-    calls: list[_RawFunctionTagCall] = []
-    while True:
-        cursor = _skip_function_tag_whitespace(text, cursor)
-        if cursor == len(text):
-            break
-        if not text.startswith(_FUNCTION_TAG_BLOCK_START, cursor):
-            raise ValueError
-
-        block_start = cursor + len(_FUNCTION_TAG_BLOCK_START)
-        block_end = text.find(_FUNCTION_TAG_BLOCK_END, block_start)
-        if block_end < 0:
-            raise ValueError
-        name, arguments = _parse_function_tag_block(text[block_start:block_end])
-        calls.append(_RawFunctionTagCall(name=name, arguments=arguments))
-        cursor = block_end + len(_FUNCTION_TAG_BLOCK_END)
-
-    if not calls:
-        raise ValueError
-    return tuple(calls)
-
-
-def _parse_function_tag_block(block: str) -> tuple[str, dict[str, str]]:
-    cursor = _skip_function_tag_whitespace(block, 0)
-    if not block.startswith(_FUNCTION_TAG_START, cursor):
-        raise ValueError
-    name_end = block.find(">", cursor + len(_FUNCTION_TAG_START))
-    if name_end < 0:
-        raise ValueError
-    name = block[cursor + len(_FUNCTION_TAG_START) : name_end]
-    if not _valid_function_tag_name(name):
-        raise ValueError
-
-    arguments: dict[str, str] = {}
-    cursor = name_end + 1
-    while True:
-        cursor = _skip_function_tag_whitespace(block, cursor)
-        if block.startswith(_FUNCTION_TAG_END, cursor):
-            cursor += len(_FUNCTION_TAG_END)
-            break
-        if cursor == len(block) or not block.startswith(_PARAMETER_TAG_START, cursor):
-            raise ValueError
-
-        parameter_name_end = block.find(">", cursor + len(_PARAMETER_TAG_START))
-        if parameter_name_end < 0:
-            raise ValueError
-        parameter_name = block[cursor + len(_PARAMETER_TAG_START) : parameter_name_end]
-        if not _valid_function_tag_name(parameter_name) or parameter_name in arguments:
-            raise ValueError
-
-        value_start = parameter_name_end + 1
-        value_end = block.find(_PARAMETER_TAG_END, value_start)
-        if value_end < 0:
-            raise ValueError
-        arguments[parameter_name] = _unwrap_function_tag_newlines(
-            block[value_start:value_end]
-        )
-        cursor = value_end + len(_PARAMETER_TAG_END)
-
-    if block[cursor:].strip():
-        raise ValueError
-    return name, arguments
+def _partial_function_tag_marker_suffix_length(text: str) -> int:
+    """Detect partial suffix of <tool_call> marker."""
+    max_length = min(len(text), len(_FUNCTION_TAG_BLOCK_START) - 1)
+    for length in range(max_length, 0, -1):
+        if _FUNCTION_TAG_BLOCK_START.startswith(text[-length:]):
+            return length
+    return 0
 
 
 def _skip_function_tag_whitespace(text: str, cursor: int) -> int:
@@ -255,13 +76,243 @@ def _unwrap_function_tag_newlines(value: str) -> str:
     return value
 
 
-def _partial_function_tag_marker_suffix_length(text: str) -> int:
-    max_length = min(len(text), len(_FUNCTION_TAG_BLOCK_START) - 1)
-    for length in range(max_length, 0, -1):
-        if _FUNCTION_TAG_BLOCK_START.startswith(text[-length:]):
-            return length
-    return 0
+# ============================================================
+# SECTION 2 — STRICT FUNCTION-TAG PARSER
+# ============================================================
 
+@dataclass(frozen=True, slots=True)
+class _RawFunctionTagCall:
+    name: str
+    arguments: dict[str, str]
+
+
+class _FunctionTagState(Enum):
+    SEARCHING = 1
+    CANDIDATE = 2
+    DISABLED = 3
+    FINISHED = 4
+
+
+class FunctionTagToolParser:
+    """
+    Parse exact <tool_call> envelopes into validated tool-use objects.
+    """
+
+    def __init__(self, request: MessagesRequest):
+        self._tool_names = OpenAIToolNameCodec.from_request(request)
+        self._schemas: dict[str, dict[str, Any]] = {}
+
+        for tool in request.tools or ():
+            if tool.name:
+                self._schemas[tool.name] = (
+                    tool.input_schema if tool.input_schema is not None else {"type": "object"}
+                )
+
+        tool_choice = request.tool_choice
+        tool_choice_type = tool_choice.get("type") if isinstance(tool_choice, dict) else None
+
+        self._state = (
+            _FunctionTagState.SEARCHING
+            if self._schemas and tool_choice_type != "none"
+            else _FunctionTagState.DISABLED
+        )
+
+        self._parts: list[str] = []
+        self._length = 0
+        self._marker_tail = ""
+
+    def feed(self, text: str) -> str:
+        """Feed text and return visible text while holding tool-call candidates."""
+        if not text:
+            return ""
+
+        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
+            return text
+
+        if self._state is _FunctionTagState.CANDIDATE:
+            self._parts.append(text)
+            self._length += len(text)
+            if self._length > _MAX_FUNCTION_TAG_CANDIDATE_CHARS:
+                return self.disable()
+            return ""
+
+        candidate = "".join((self._marker_tail, text))
+        marker_index = candidate.find(_FUNCTION_TAG_BLOCK_START)
+
+        if marker_index >= 0:
+            visible = candidate[:marker_index]
+            control = candidate[marker_index:]
+            self._state = _FunctionTagState.CANDIDATE
+            self._marker_tail = ""
+            self._parts.append(control)
+            self._length = len(control)
+            if self._length > _MAX_FUNCTION_TAG_CANDIDATE_CHARS:
+                return "".join((visible, self.disable()))
+            return visible
+
+        held_length = _partial_function_tag_marker_suffix_length(candidate)
+        if held_length:
+            self._marker_tail = candidate[-held_length:]
+            return candidate[:-held_length]
+
+        self._marker_tail = ""
+        return candidate
+
+    def disable(self) -> str:
+        """Disable parsing and release held candidate."""
+        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
+            return ""
+        self._state = _FunctionTagState.DISABLED
+        text = "".join((self._marker_tail, *self._parts))
+        self._marker_tail = ""
+        self._parts.clear()
+        self._length = 0
+        return text
+
+    def finish(self) -> tuple[str, tuple[dict[str, Any], ...]]:
+        """Finalize parsing and return (visible_text, tool_uses)."""
+        if self._state in {_FunctionTagState.DISABLED, _FunctionTagState.FINISHED}:
+            return "", ()
+
+        if self._state is _FunctionTagState.SEARCHING:
+            self._state = _FunctionTagState.FINISHED
+            text = self._marker_tail
+            self._marker_tail = ""
+            return text, ()
+
+        self._state = _FunctionTagState.FINISHED
+        raw = "".join(self._parts)
+        self._parts.clear()
+        self._length = 0
+
+        try:
+            calls = _parse_function_tag_calls(raw)
+            tool_uses = self._validated_tool_uses(calls)
+        except ValueError:
+            return raw, ()
+
+        return "", tool_uses
+
+    def _validated_tool_uses(
+        self,
+        calls: tuple[_RawFunctionTagCall, ...],
+    ) -> tuple[dict[str, Any], ...]:
+        tool_uses: list[dict[str, Any]] = []
+
+        for call in calls:
+            name = self._tool_names.decode(call.name)
+            schema = self._schemas.get(name)
+            if schema is None:
+                raise ValueError
+
+            properties = schema.get("properties")
+            property_schemas = properties if isinstance(properties, Mapping) else {}
+            additional = schema.get("additionalProperties")
+
+            arguments: dict[str, Any] = {}
+
+            for parameter_name, value in call.arguments.items():
+                parameter_schema = property_schemas.get(parameter_name)
+                if not isinstance(parameter_schema, Mapping):
+                    parameter_schema = additional if isinstance(additional, Mapping) else {}
+                arguments[parameter_name] = coerce_text_argument(value, parameter_schema)
+
+            if not arguments_match_schema(arguments, schema):
+                raise ValueError
+
+            tool_uses.append(
+                {
+                    "type": "tool_use",
+                    "id": f"toolu_function_tag_{uuid.uuid4().hex[:8]}",
+                    "name": name,
+                    "input": arguments,
+                }
+            )
+
+        return tuple(tool_uses)
+
+
+def _parse_function_tag_calls(text: str) -> tuple[_RawFunctionTagCall, ...]:
+    cursor = 0
+    calls: list[_RawFunctionTagCall] = []
+
+    while True:
+        cursor = _skip_function_tag_whitespace(text, cursor)
+        if cursor == len(text):
+            break
+
+        if not text.startswith(_FUNCTION_TAG_BLOCK_START, cursor):
+            raise ValueError
+
+        block_start = cursor + len(_FUNCTION_TAG_BLOCK_START)
+        block_end = text.find(_FUNCTION_TAG_BLOCK_END, block_start)
+        if block_end < 0:
+            raise ValueError
+
+        name, arguments = _parse_function_tag_block(text[block_start:block_end])
+        calls.append(_RawFunctionTagCall(name=name, arguments=arguments))
+        cursor = block_end + len(_FUNCTION_TAG_BLOCK_END)
+
+    if not calls:
+        raise ValueError
+
+    return tuple(calls)
+
+
+def _parse_function_tag_block(block: str) -> tuple[str, dict[str, str]]:
+    cursor = _skip_function_tag_whitespace(block, 0)
+
+    if not block.startswith(_FUNCTION_TAG_START, cursor):
+        raise ValueError
+
+    name_end = block.find(">", cursor + len(_FUNCTION_TAG_START))
+    if name_end < 0:
+        raise ValueError
+
+    name = block[cursor + len(_FUNCTION_TAG_START) : name_end]
+    if not _valid_function_tag_name(name):
+        raise ValueError
+
+    arguments: dict[str, str] = {}
+    cursor = name_end + 1
+
+    while True:
+        cursor = _skip_function_tag_whitespace(block, cursor)
+
+        if block.startswith(_FUNCTION_TAG_END, cursor):
+            cursor += len(_FUNCTION_TAG_END)
+            break
+
+        if cursor == len(block) or not block.startswith(_PARAMETER_TAG_START, cursor):
+            raise ValueError
+
+        parameter_name_end = block.find(">", cursor + len(_PARAMETER_TAG_START))
+        if parameter_name_end < 0:
+            raise ValueError
+
+        parameter_name = block[cursor + len(_PARAMETER_TAG_START) : parameter_name_end]
+        if not _valid_function_tag_name(parameter_name) or parameter_name in arguments:
+            raise ValueError
+
+        value_start = parameter_name_end + 1
+        value_end = block.find(_PARAMETER_TAG_END, value_start)
+        if value_end < 0:
+            raise ValueError
+
+        arguments[parameter_name] = _unwrap_function_tag_newlines(
+            block[value_start:value_end]
+        )
+        cursor = value_end + len(_PARAMETER_TAG_END)
+
+    if block[cursor:].strip():
+        raise ValueError
+
+    return name, arguments
+
+
+# ============================================================
+# SECTION 3 — HEURISTIC RAW-TEXT PARSER
+# ============================================================
 
 class ParserState(Enum):
     TEXT = 1
@@ -271,11 +322,11 @@ class ParserState(Enum):
 
 class HeuristicToolParser:
     """
-    Stateful parser for raw text tool calls.
-
-    Some OpenAI-compatible models emit tool calls as text rather than structured
-    chunks. This parser converts the common ``● <function=...>`` form into
-    Anthropic-style ``tool_use`` blocks.
+    Stateful parser for raw text tool calls emitted by some models.
+    Converts:
+        ● <function=name>
+        <parameter=x>value</parameter>
+    into Anthropic-style tool_use blocks.
     """
 
     _FUNC_START_PATTERN = re.compile(r"●\s*<function=([^>]+)>")
@@ -293,6 +344,20 @@ class HeuristicToolParser:
         self._current_function_name = None
         self._current_parameters = {}
 
+    def _strip_control_tokens(self, text: str) -> str:
+        return _CONTROL_TOKEN_RE.sub("", text)
+
+    def _split_incomplete_control_token_tail(self) -> str:
+        start = self._buffer.rfind(_CONTROL_TOKEN_START)
+        if start == -1:
+            return ""
+        end = self._buffer.find(_CONTROL_TOKEN_END, start)
+        if end != -1:
+            return ""
+        prefix = self._buffer[:start]
+        self._buffer = self._buffer[start:]
+        return prefix
+
     def _extract_web_tool_json_calls(self) -> tuple[str, list[dict[str, Any]]]:
         detected_tools: list[dict[str, Any]] = []
 
@@ -301,6 +366,7 @@ class HeuristicToolParser:
                 tool_input = json.loads(match.group("json"))
             except json.JSONDecodeError:
                 continue
+
             if not isinstance(tool_input, dict):
                 continue
 
@@ -318,6 +384,7 @@ class HeuristicToolParser:
                     "input": tool_input,
                 }
             )
+
             logger.debug(
                 "Heuristic bypass: Detected JSON-style tool call '{}'",
                 tool_name,
@@ -328,26 +395,12 @@ class HeuristicToolParser:
 
         return "", detected_tools
 
-    def _strip_control_tokens(self, text: str) -> str:
-        return _CONTROL_TOKEN_RE.sub("", text)
-
-    def _split_incomplete_control_token_tail(self) -> str:
-        start = self._buffer.rfind(_CONTROL_TOKEN_START)
-        if start == -1:
-            return ""
-        end = self._buffer.find(_CONTROL_TOKEN_END, start)
-        if end != -1:
-            return ""
-
-        prefix = self._buffer[:start]
-        self._buffer = self._buffer[start:]
-        return prefix
-
     def feed(self, text: str) -> tuple[str, list[dict[str, Any]]]:
-        """Feed text and return safe text plus detected tool calls."""
+        """Feed text and return (safe_text, detected_tool_calls)."""
         self._buffer += text
         self._buffer = self._strip_control_tokens(self._buffer)
         self._buffer, detected_tools = self._extract_web_tool_json_calls()
+
         filtered_output_parts: list[str] = []
 
         while True:
@@ -362,7 +415,6 @@ class HeuristicToolParser:
                     if safe_prefix:
                         filtered_output_parts.append(safe_prefix)
                         break
-
                     filtered_output_parts.append(self._buffer)
                     self._buffer = ""
                     break
@@ -373,8 +425,9 @@ class HeuristicToolParser:
                     self._current_function_name = match.group(1).strip()
                     self._current_tool_id = f"toolu_heuristic_{uuid.uuid4().hex[:8]}"
                     self._current_parameters = {}
-                    self._buffer = self._buffer[match.end() :]
+                    self._buffer = self._buffer[match.end():]
                     self._state = ParserState.PARSING_PARAMETERS
+
                     logger.debug(
                         "Heuristic bypass: Detected start of tool call '{}'",
                         self._current_function_name,
@@ -392,14 +445,14 @@ class HeuristicToolParser:
                 while True:
                     param_match = self._PARAM_PATTERN.search(self._buffer)
                     if param_match and "</parameter>" in param_match.group(0):
-                        pre_match_text = self._buffer[: param_match.start()]
+                        pre_match_text = self._buffer[:param_match.start()]
                         if pre_match_text:
                             filtered_output_parts.append(pre_match_text)
 
                         key = param_match.group(1).strip()
                         val = param_match.group(2).strip()
                         self._current_parameters[key] = val
-                        self._buffer = self._buffer[param_match.end() :]
+                        self._buffer = self._buffer[param_match.end():]
                     else:
                         break
 
@@ -424,11 +477,13 @@ class HeuristicToolParser:
                             "input": self._current_parameters,
                         }
                     )
+
                     logger.debug(
                         "Heuristic bypass: Emitting tool call '{}' with {} params",
                         self._current_function_name,
                         len(self._current_parameters),
                     )
+
                     self._state = ParserState.TEXT
                 else:
                     break
@@ -439,6 +494,7 @@ class HeuristicToolParser:
         """Flush any remaining tool call in the buffer."""
         self._buffer = self._strip_control_tokens(self._buffer)
         detected_tools = []
+
         if self._state == ParserState.PARSING_PARAMETERS:
             partial_matches = re.finditer(
                 r"<parameter=([^>]+)>(.*)$", self._buffer, re.DOTALL
@@ -456,7 +512,45 @@ class HeuristicToolParser:
                     "input": self._current_parameters,
                 }
             )
+
             self._state = ParserState.TEXT
             self._buffer = ""
 
         return detected_tools
+
+
+# ============================================================
+# SECTION 4 — TOOL REGISTRY
+# ============================================================
+
+TOOL_REGISTRY: dict[str, dict[str, Any]] = {
+    "WebFetch": {
+        "description": "Fetch a URL over HTTP(S).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "method": {"type": "string", "default": "GET"},
+                "headers": {"type": "object"},
+                "body": {"type": ["string", "null"]},
+            },
+            "required": ["url"],
+        },
+    },
+
+    "WebSearch": {
+        "description": "Perform a web search query.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "recency_days": {"type": "integer"},
+                "domains": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}

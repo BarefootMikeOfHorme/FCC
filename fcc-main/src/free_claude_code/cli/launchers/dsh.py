@@ -148,14 +148,14 @@ def dsh_binary_version(binary_path: str) -> str | None:
             text=True,
             timeout=_VERSION_TIMEOUT_SECONDS,
         )
-    except OSError, subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return None
+
     if result.returncode != 0:
         return None
 
     match = _VERSION_PATTERN.search(result.stdout)
     return match.group(1) if match is not None else None
-
 
 def build_dsh_launcher_env(
     *,

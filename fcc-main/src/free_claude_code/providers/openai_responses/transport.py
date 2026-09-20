@@ -162,6 +162,7 @@ class OpenAIResponsesTransport:
     ) -> AsyncIterator[InferenceEvent]:
         recovery = RecoveryController()
         response_id = f"response_{uuid.uuid4().hex}"
+
         trace_event(
             stage="provider",
             event="provider.request.sent",
@@ -181,12 +182,14 @@ class OpenAIResponsesTransport:
                 input_tokens=input_tokens,
                 tool_names=tool_names,
             )
+
             for event in stream_adapter.start():
                 for held in recovery.push(event):
                     yield held
 
             scope: ProviderAttemptScope | None = None
             stream_opened = False
+
             try:
                 attempt = await execution.open_attempt(ProviderOperationKind.GENERATION)
                 scope = ProviderAttemptScope(
@@ -194,6 +197,7 @@ class OpenAIResponsesTransport:
                     provider_name=self._provider_name,
                     request_id=request_id,
                 )
+
                 sdk_stream = await self._client.responses.create(**body)
                 stream = scope.retain(_ClosableResponsesStream(sdk_stream))
                 stream_opened = True
@@ -201,18 +205,22 @@ class OpenAIResponsesTransport:
                 async for upstream_event in stream:
                     if not scope.attempt.accepted:
                         await scope.attempt.accept()
+
                     for event in stream_adapter.feed(
                         upstream_event.type,
                         upstream_event.to_dict(mode="json"),
                     ):
                         for held in recovery.push(event):
                             yield held
+
                 if not stream_adapter.completed:
                     raise _TruncatedResponsesStream(
                         "Provider Responses stream ended without a terminal event."
                     )
+
                 for event in recovery.flush():
                     yield event
+
                 trace_event(
                     stage="provider",
                     event="provider.response.completed",
@@ -221,14 +229,19 @@ class OpenAIResponsesTransport:
                     request_id=request_id,
                     transport="responses",
                 )
+
                 return
-            except asyncio.CancelledError, GeneratorExit:
+
+            except (asyncio.CancelledError, GeneratorExit):
                 raise
+
             except Exception as raw_error:
                 error = _effective_error(raw_error)
-                attempt_failure = None
+                attempt_failure: ExecutionFailure | None = None
+
                 if scope is not None and not scope.attempt.accepted:
                     attempt_failure = await scope.attempt.fail(error)
+
                 if attempt_failure is not None and attempt_failure.retry_allowed:
                     recovery.discard()
                     _trace_early_retry(
@@ -236,20 +249,22 @@ class OpenAIResponsesTransport:
                         request_id=request_id,
                         execution=execution,
                     )
-                    continue
+                    return
 
                 retryable = (
                     attempt_failure.retryable
                     if attempt_failure is not None
                     else is_retryable_stream_error(error)
                 )
+
                 decision = recovery.advance_failure(
+                    provider_name=self._provider_name,
+                    request_id=request_id,
+                    execution=execution,
                     retryable=retryable,
-                    stream_opened=stream_opened,
-                    generated_output=recovery.committed,
-                    complete_tool_salvageable=False,
-                    attempts_remaining=execution.attempts_remaining,
+                    error=error,
                 )
+
                 if decision.action is RecoveryFailureAction.EARLY_RETRY:
                     recovery.discard()
                     _trace_early_retry(
@@ -265,6 +280,7 @@ class OpenAIResponsesTransport:
                     read_timeout_s=self._read_timeout_s,
                     request_id=request_id,
                 )
+
                 trace_event(
                     stage="provider",
                     event="provider.response.error",
@@ -277,18 +293,23 @@ class OpenAIResponsesTransport:
                     status_code=failure.status_code,
                     provider_retryable=failure.retryable,
                 )
+
                 if not decision.committed:
                     recovery.discard()
                     raise failure from raw_error
+
                 for event in stream_adapter.ledger.close_unclosed_blocks():
                     yield event
+
                 raise failure from raw_error
+
             finally:
                 if scope is not None:
                     await scope.aclose(active_error=sys.exception())
 
         if execution.last_failure is not None:
             raise execution.last_failure
+
         raise RuntimeError("Responses execution ended without a terminal result.")
 
 

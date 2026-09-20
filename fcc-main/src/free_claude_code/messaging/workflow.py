@@ -39,7 +39,7 @@ from .turn_intake import MessagingTurnIntake
 from .voice import VoiceCancellationResult
 
 # LangChain imports for memory
-from langchain_classic.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferMemory
 
 from free_claude_code.messaging.memory.persistent import PersistentMemoryStore
 

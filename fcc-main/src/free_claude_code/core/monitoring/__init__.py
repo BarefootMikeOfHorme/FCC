@@ -1,3 +1,7 @@
+from .orchestrator import MonitoringOrchestrator
+from .providers import MonitoringProviderRegistry
+from .system_metrics import SystemMetrics
+from .terminal_monitors import TerminalMonitorManager
 """
 Monitoring subsystem package initializer.
 
@@ -8,10 +12,6 @@ Exports:
 - MonitoringProviderRegistry: pluggable provider metrics registry
 """
 
-from .orchestrator import MonitoringOrchestrator
-from .system_metrics import SystemMetrics
-from .terminal_monitors import TerminalMonitorManager
-from .providers import MonitoringProviderRegistry
 
 __all__ = [
     "MonitoringOrchestrator",

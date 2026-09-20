@@ -1,11 +1,11 @@
+import shutil
+import subprocess
 """
 glances Launcher
 
 Thin wrapper for direct use.
 """
 
-import subprocess
-import shutil
 
 
 def launch_glances() -> str:

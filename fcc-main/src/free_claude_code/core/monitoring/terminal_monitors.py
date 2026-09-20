@@ -1,3 +1,8 @@
+from loguru import logger
+import os
+import platform
+import shutil
+import subprocess
 """
 Terminal Monitor Manager
 
@@ -10,12 +15,7 @@ Handles launching external terminal-based monitors:
 Non-blocking, best-effort, and never critical to core/L1.
 """
 
-import os
-import platform
-import shutil
-import subprocess
 
-from loguru import logger
 
 
 def _working_monitor_executable(name: str) -> str | None:

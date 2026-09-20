@@ -50,6 +50,7 @@ class _ProviderGeneration:
     cleanup_task: asyncio.Task[bool] | None = None
 
     def __post_init__(self) -> None:
+        # Initially considered drained until a lease is acquired.
         self.drained.set()
 
 
@@ -144,7 +145,9 @@ class ProviderRuntimeManager:
         return self._model_cache.cached_model_ids()
 
     def cached_model_supports_thinking(
-        self, provider_id: str, model_id: str
+        self,
+        provider_id: str,
+        model_id: str,
     ) -> bool | None:
         self._synchronize_model_cache_scope()
         return self._model_cache.cached_model_supports_thinking(provider_id, model_id)
@@ -197,10 +200,12 @@ class ProviderRuntimeManager:
             return await self._refresh_generation(self._current, only_missing=False)
 
     async def connected_provider_changed(
-        self, provider_id: str, *, connected: bool
+        self,
+        provider_id: str,
+        *,
+        connected: bool,
     ) -> ProviderModelRefreshResult:
         """Synchronize one connected account without replacing a generation."""
-
         async with self._replace_lock:
             if self._closing or self._closed:
                 raise ApplicationUnavailableError("Provider runtime is shutting down.")
@@ -208,6 +213,7 @@ class ProviderRuntimeManager:
                 self._model_cache.remove_provider(provider_id)
                 self._publish_model_catalog()
                 return ProviderModelRefreshResult()
+
             self._model_cache.add_provider(provider_id)
             discovery = ProviderModelDiscovery(
                 self._current.settings,
@@ -221,10 +227,10 @@ class ProviderRuntimeManager:
 
     def _synchronize_model_cache_scope(self) -> None:
         """Drop metadata whose settings or connected account is no longer usable."""
-
         self._model_cache.set_available_providers(
             model_cache_provider_ids_for_settings(
-                self._current.settings, self._connected_provider_ids()
+                self._current.settings,
+                self._connected_provider_ids(),
             )
         )
 
@@ -241,8 +247,10 @@ class ProviderRuntimeManager:
                 raise ApplicationUnavailableError("Provider runtime is shutting down.")
             await self._cancel_refresh()
             await self._retry_unpublished_cleanup()
+
             candidate_id = self._next_generation_id
             candidate_runtime: ProviderRuntime | None = None
+
             try:
                 candidate_runtime = self._runtime_factory(settings)
                 commit()
@@ -271,7 +279,8 @@ class ProviderRuntimeManager:
             self._current = candidate
             self._model_cache.set_available_providers(
                 model_cache_provider_ids_for_settings(
-                    settings, self._connected_provider_ids()
+                    settings,
+                    self._connected_provider_ids(),
                 )
             )
             self._publish_model_catalog()
@@ -344,7 +353,9 @@ class ProviderRuntimeManager:
                 self._model_cache,
                 self._connected_provider_ids(),
             )
-            result = await discovery.refresh_model_list_cache(only_missing=only_missing)
+            result = await discovery.refresh_model_list_cache(
+                only_missing=only_missing,
+            )
             self._publish_model_catalog()
             return result
         finally:
@@ -494,7 +505,11 @@ class ProviderRuntimeManager:
         )
 
     @staticmethod
-    def _trace_retired(generation: _ProviderGeneration, *, reason: str) -> None:
+    def _trace_retired(
+        generation: _ProviderGeneration,
+        *,
+        reason: str,
+    ) -> None:
         trace_event(
             stage="runtime",
             event="provider_generation.retired",

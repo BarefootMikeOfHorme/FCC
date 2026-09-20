@@ -8,88 +8,80 @@ version = "5.14.2"
 description = "Local proxy connecting coding agents to OpenAI-compatible AI providers"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+
 dependencies = [
+    # Core Web Framework
     "fastapi[standard]>=0.141.1",
     "uvicorn>=0.52.1",
+
+    # Networking / HTTP Clients
     "httpx[socks]>=0.28.1",
     "httpx2[socks]>=2.7.0,<3",
-    "markdown-it-py>=4.2.0",
-    "pydantic>=2.13.4",
-    "python-dotenv>=1.2.2",
-    "tiktoken>=0.13.0",
-    "python-telegram-bot>=22.8",
-    "typer>=0.9.0",
-    "discord.py>=2.7.1",
-    "openai>=3.2.0",
-    "loguru>=0.7.0",
-    "langchain_classic>=0.0.1",
     "aiohttp>=3.14.3",
-    "jsonschema>=4.25.0",
-    "google-auth[requests]>=2.56.3",
     "requests[socks]>=2.34.2",
-    "pystray>=0.19.5; sys_platform == 'win32' or sys_platform == 'darwin'",
-    "Pillow>=12.0.0; sys_platform == 'win32' or sys_platform == 'darwin'",
-    "cryptography>=42.0.0",
-    "langchain>=0.1.0",
-    "chromadb>=0.4.0",
+    "google-auth[requests]>=2.56.3",
+
+    # Typing / Validation / Schema
+    "pydantic>=2.13.4",
+    "markdown-it-py>=4.2.0",
+    "jsonschema>=4.25.0",
+
+    # Environment / Config
+    "python-dotenv>=1.2.2",
+
+    # AI / ML Stack (Modern, Conflict-Free)
+    "tiktoken>=0.13.0",
     "sentence-transformers>=2.2.0",
-
-    # ⭐ Stability & Retry Enhancers
-    "tenacity>=9.1.0",
-    "backoff>=2.2.1",
-
-    # ⭐ Logging Enhancer
-    "python-json-logger>=2.0.7",
-
-    # ⭐ Local Inference Support
     "accelerate>=1.0.0",
 
-    # ⭐ Security Enhancer
+    # Modern LangChain (Classic removed)
+    "langchain>=0.2.11",
+    "langchain-core>=0.2.23,<0.3.0",
+
+    # Modern ChromaDB (Pydantic v2 compatible)
+    "chromadb>=0.5.3",
+
+    # OpenAI Client
+    "openai>=3.2.0",
+
+    # Messaging / Bots
+    "python-telegram-bot>=22.8",
+    "discord.py>=2.7.1",
+    "typer>=0.9.0",
+
+    # Logging / Retry (Fixed)
+    "loguru>=0.7.0",
+    "python-json-logger>=2.0.7",
+    "tenacity==8.2.3",
+    "backoff>=2.2.1",
+
+    # Auth / Crypto
+    "cryptography>=42.0.0",
     "authlib>=1.3.0",
+
+    # Platform Extras
+    "pystray>=0.19.5; sys_platform == 'win32' or sys_platform == 'darwin'",
+    "Pillow>=12.0.0; sys_platform == 'win32' or sys_platform == 'darwin'",
 ]
 
 [project.scripts]
-# --- Core FCC Runtime ---
 fcc-server = "free_claude_code.cli.entrypoints:serve"
 fcc-claude = "free_claude_code.cli.launchers.claude:launch"
-
-# --- Agent Launchers ---
 fcc-codex = "free_claude_code.cli.launchers.codex:launch"
 fcc-pi = "free_claude_code.cli.launchers.pi:launch"
 fcc-opencode = "free_claude_code.cli.launchers.opencode:launch"
 fcc-cline = "free_claude_code.cli.launchers.cline:launch"
 fcc-hermes = "free_claude_code.cli.launchers.hermes:launch"
 fcc-muse = "free_claude_code.cli.launchers.muse:launch"
-
-# --- Setup Wizard ---
 fcc-setup = "free_claude_code.cli.entrypoints:setup_wizard"
-
-# --- New Commands (Updated Command Suite) ---
-# Bring Admin UI back to front (UI already auto-opens at server start)
 fcc-admin = "free_claude_code.cli.entrypoints:open_admin_ui"
-
-# List all FCC agents (Claude, Codex, Hermes, etc.)
 fcc-agents = "free_claude_code.cli.launchers.agents:list_agents"
-
-# List all tools, MCPs, scripts, assets, catalogs, active/inactive
 fcc-tools = "free_claude_code.cli.tools:list_tools"
-
-# List all reachable models (filtered by autodetection)
 fcc-models = "free_claude_code.cli.models:list_models"
-
-# Show server status (running/not running, providers, health)
 fcc-status = "free_claude_code.cli.entrypoints:server_status"
-
-# Tail logs (run.log + err.log)
 fcc-log = "free_claude_code.cli.entrypoints:tail_logs"
-
-# Show or validate FCC configuration
 fcc-config = "free_claude_code.cli.entrypoints:config_info"
-
-# Provider management (auth, status, reload)
 fcc-provider = "free_claude_code.cli.providers:provider_cli"
-
-# Manual monitoring dashboard launcher (server already auto-starts monitoring)
 fcc-monitor = "free_claude_code.cli.monitoring:launch_monitoring"
 
 [project.gui-scripts]
@@ -125,23 +117,8 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
-select = [
-    "E",
-    "W",
-    "F",
-    "I",
-    "UP",
-    "B",
-    "C4",
-    "SIM",
-    "PERF",
-    "RUF",
-]
-ignore = [
-    "E501",
-    "B008",
-    "RUF006",
-]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "PERF", "RUF"]
+ignore = ["E501", "B008", "RUF006"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["free_claude_code", "smoke"]

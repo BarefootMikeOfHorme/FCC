@@ -1,11 +1,11 @@
+import shutil
+import subprocess
 """
 htop Launcher
 
 Thin wrapper for direct use.
 """
 
-import subprocess
-import shutil
 
 
 def launch_htop() -> str:

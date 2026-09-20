@@ -1,3 +1,9 @@
+from .bottom import BottomMonitor
+from .monitor_config import MonitorConfig
+from .providers import MonitoringProviderRegistry
+from .system_metrics import SystemMetrics
+from .terminal_monitors import TerminalMonitorManager
+from typing import Callable, Dict, List, Any
 """
 Monitoring Orchestrator
 
@@ -27,13 +33,7 @@ Supports dual-mode bottom operation:
 - "primary": bottom becomes the main unified snapshot source
 """
 
-from typing import Callable, Dict, List, Any
 
-from .system_metrics import SystemMetrics
-from .terminal_monitors import TerminalMonitorManager
-from .providers import MonitoringProviderRegistry
-from .bottom import BottomMonitor
-from .monitor_config import MonitorConfig
 
 
 class MonitoringOrchestrator:

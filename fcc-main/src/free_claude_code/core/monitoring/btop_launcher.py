@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 """
 btop Launcher
 
@@ -5,8 +7,6 @@ Thin wrapper around TerminalMonitorManager-style behavior,
 exposed as a standalone function for direct CLI/Admin use.
 """
 
-import subprocess
-import shutil
 
 
 def launch_btop() -> str:

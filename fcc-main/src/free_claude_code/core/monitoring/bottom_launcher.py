@@ -1,143 +1,98 @@
 """
-bottom.py
+bottom_launcher.py
 
-Unified baseline monitoring layer.
+Launcher for the unified baseline monitor (BottomMonitor / BoHTOM).
 
-Phase 1:
-- Wraps system_metrics, providers, terminal_monitors
-- Exposes a single snapshot() API
-- Provides safe-to-fail behavior
-- Uses BtHop (btop) as fallback mode when needed
+This does NOT run the Python monitor inline — it opens a terminal window
+running a lightweight “bottom snapshot viewer” so the user can inspect
+live metrics without blocking the main FCC runtime.
 
-Designed to be:
-- Self-contained
-- L1-compatible but L1-agnostic
-- Ready to replace system_metrics/providers/terminal_monitors later
+Safe on Windows, Linux, macOS.
+Never raises exceptions to callers.
 """
 
-from typing import Dict, Any, Optional
+from __future__ import annotations
 
-from .system_metrics import SystemMetrics
-from .providers import MonitoringProviderRegistry
-from .terminal_monitors import TerminalMonitorManager
-from .btop_launcher import launch_btop
+import subprocess
+import sys
+import os
+from loguru import logger
+
+# Local import to avoid circular dependency
+from .bottom import BottomMonitor
 
 
-class BottomMonitor:
+def _viewer_script() -> str:
     """
-    Unified baseline monitor.
+    Generate a tiny inline Python script that prints snapshots repeatedly.
+    This avoids needing a separate .py file on disk.
+    """
+    return (
+        "import time\n"
+        "from free_claude_code.core.monitoring.bottom import BottomMonitor\n"
+        "m = BottomMonitor(); m.initialize()\n"
+        "print('--- Bottom Monitor (BoHTOM) ---')\n"
+        "while True:\n"
+        "    snap = m.snapshot()\n"
+        "    print('\\nSnapshot:', snap)\n"
+        "    time.sleep(2)\n"
+    )
 
-    Current behavior:
-    - Collects system metrics via SystemMetrics
-    - Collects provider metrics via MonitoringProviderRegistry
-    - Reports terminal monitor availability via TerminalMonitorManager
-    - Provides a single snapshot() entrypoint
-    - Offers a fallback_to_bthop() method for BtHop mode
+
+def launch_bottom() -> str:
+    """
+    Launch the BottomMonitor viewer in a new terminal window.
+
+    Returns a human-readable status string.
     """
 
-    def __init__(self) -> None:
-        self._system = SystemMetrics()
-        self._providers = MonitoringProviderRegistry()
-        self._terminals = TerminalMonitorManager()
-        self._initialized = False
+    try:
+        script = _viewer_script()
 
-    def initialize(self) -> None:
-        """
-        Initialize underlying subsystems.
+        # Write the viewer script to a temporary file
+        import tempfile
 
-        Safe to call multiple times.
-        """
-        if self._initialized:
-            return
-        try:
-            self._system.initialize()
-        except Exception:
-            # System metrics init failure should not break baseline
-            pass
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix="_bottom_viewer.py",
+            mode="w",
+            encoding="utf-8",
+        )
+        tmp.write(script)
+        tmp.close()
 
-        try:
-            self._providers.initialize()
-        except Exception:
-            # Provider init failure should not break baseline
-            pass
+        path = tmp.name
 
-        # Terminal monitors are lazy; no init required
-        self._initialized = True
+        # Platform-specific terminal launching
+        if sys.platform.startswith("win"):
+            # Windows Terminal (wt.exe) if available
+            try:
+                subprocess.Popen(["wt.exe", "python", path])
+                return "Launched bottom monitor in Windows Terminal"
+            except Exception:
+                # Fallback to cmd.exe
+                subprocess.Popen(["cmd.exe", "/k", "python", path])
+                return "Launched bottom monitor in cmd.exe"
 
-    def snapshot(self) -> Dict[str, Any]:
-        """
-        Return a unified baseline snapshot.
+        elif sys.platform.startswith("darwin"):
+            # macOS Terminal
+            subprocess.Popen(
+                ["open", "-a", "Terminal", path]
+            )
+            return "Launched bottom monitor in macOS Terminal"
 
-        Structure:
-        {
-            "system": {...},
-            "providers": {...},
-            "terminal": {...},
-            "status": "ok" | "degraded"
-        }
+        else:
+            # Linux / Unix
+            # Try gnome-terminal, xterm, or fallback to direct execution
+            for term in ("gnome-terminal", "xterm"):
+                if shutil.which(term):
+                    subprocess.Popen([term, "--", "python3", path])
+                    return f"Launched bottom monitor in {term}"
 
-        All failures are contained; never raises.
-        """
-        status = "ok"
+            # Fallback: run in background
+            subprocess.Popen(["python3", path])
+            return "Launched bottom monitor (background mode)"
 
-        try:
-            system = self._system.collect()
-        except Exception:
-            system = {"error": "system_metrics_failed"}
-            status = "degraded"
-
-        try:
-            providers = self._providers.collect()
-        except Exception:
-            providers = {"error": "provider_metrics_failed"}
-            status = "degraded"
-
-        try:
-            terminal = self._terminals.status()
-        except Exception:
-            terminal = {"error": "terminal_status_failed"}
-            status = "degraded"
-
-        return {
-            "system": system,
-            "providers": providers,
-            "terminal": terminal,
-            "status": status,
-        }
-
-    def fallback_to_bthop(self) -> str:
-        """
-        Enter BtHop (btop) fallback mode.
-
-        This is the "bottom line" fallback:
-        - If richer monitoring fails or is unavailable,
-          BtHop can still be launched for manual inspection.
-
-        Returns a human-readable status string.
-        """
-        try:
-            result = launch_btop()
-        except Exception as e:
-            return f"BtHop fallback failed: {e}"
-        return f"BtHop fallback: {result}"
-
-    # Optional hook for future L1 integration:
-    def as_event(self) -> Dict[str, Any]:
-        """
-        Represent the current snapshot as a monitoring event.
-
-        This can be used by any event bus / logger / L1 engine
-        without creating a hard dependency.
-        """
-        snap = self.snapshot()
-        return {
-            "type": "monitoring.bottom.snapshot",
-            "data": snap,
-        }
-
-
-# Convenience factory
-def create_bottom_monitor() -> BottomMonitor:
-    monitor = BottomMonitor()
-    monitor.initialize()
-    return monitor
+    except Exception as e:
+        logger.error(f"Failed to launch bottom monitor: {e}")
+        return f"Failed to launch bottom monitor: {e}"

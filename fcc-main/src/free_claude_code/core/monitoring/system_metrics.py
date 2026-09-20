@@ -1,3 +1,7 @@
+from typing import Dict, Any
+import platform
+import psutil
+import time
 """
 System Metrics Collector
 
@@ -14,10 +18,6 @@ Designed to be:
 - Always available (psutil-based)
 """
 
-import psutil
-import platform
-import time
-from typing import Dict, Any
 
 
 class SystemMetrics:

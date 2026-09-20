@@ -1,3 +1,8 @@
+from .btop_launcher import launch_btop
+from .providers import MonitoringProviderRegistry
+from .system_metrics import SystemMetrics
+from .terminal_monitors import TerminalMonitorManager
+from typing import Dict, Any
 """
 bottom.py
 
@@ -9,12 +14,7 @@ Unified baseline monitoring layer (BoHTOM).
 - BtHop fallback
 """
 
-from typing import Dict, Any
 
-from .system_metrics import SystemMetrics
-from .providers import MonitoringProviderRegistry
-from .terminal_monitors import TerminalMonitorManager
-from .btop_launcher import launch_btop
 
 
 class BottomMonitor:

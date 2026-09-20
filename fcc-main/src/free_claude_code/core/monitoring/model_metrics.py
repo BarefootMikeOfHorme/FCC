@@ -1,3 +1,5 @@
+from typing import Dict, Any
+import time
 """
 model_metrics.py
 
@@ -7,8 +9,6 @@ This is a generic stub; you can wire it to your actual
 model runner / orchestration layer later.
 """
 
-from typing import Dict, Any
-import time
 
 
 class ModelMetrics:

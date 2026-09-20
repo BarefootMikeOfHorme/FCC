@@ -1,7 +1,10 @@
+from typing import Dict, Any
+
 """
 Monitoring Provider Registry
 
 Allows registration of provider-specific monitoring sources, e.g.:
+
 - GPU metrics
 - Model load metrics
 - Provider latency/error stats
@@ -11,8 +14,6 @@ Providers are simple objects with:
 - optional initialize()
 - required collect() -> Dict[str, Any]
 """
-
-from typing import Dict, Any
 
 
 class MonitoringProviderRegistry:

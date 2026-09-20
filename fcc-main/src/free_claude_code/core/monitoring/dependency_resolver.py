@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from typing import List
 """
 Minimal stub for dependency_resolver.
 
@@ -7,8 +9,6 @@ attempts to import it. This stub satisfies the import without
 changing behavior.
 """
 
-from dataclasses import dataclass
-from typing import List
 
 @dataclass
 class DependencyIssue:
